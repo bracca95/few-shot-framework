@@ -53,7 +53,7 @@ if __name__=="__main__":
     model_path = os.path.join(os.getcwd(), "output/best_model.pth")
     
     # split dataset
-    subsets_dict = DefectViews.split_dataset(dataset, [0.8])
+    subsets_dict = DefectViews.split_dataset(dataset, config.dataset_splits)
     
     # train/test
     routine = ProtoRoutine(model, dataset, subsets_dict)
