@@ -98,36 +98,35 @@ class ProtoRoutine(TrainTest):
             lr_scheduler.step()
             
             Logger.instance().debug(f"Avg Train Loss: {avg_loss}, Avg Train Acc: {avg_acc}")
-            
-            # tensorboard
-            loss_dict = { "avg_loss": avg_loss }
-            acc_dict = { "avg_acc": avg_acc }
 
-            # if validation is required
-            if valloader is not None:
-                avg_loss_eval, avg_acc_eval = self.validate(config, valloader, val_loss, val_acc)
-
-                # tensorboard
-                loss_dict["avg_loss_eval"] = avg_loss_eval
-                acc_dict["avg_acc_eval"] = avg_acc_eval
-
-                Logger.instance().debug(f"Avg Val Loss: {avg_loss_eval}, Avg Val Acc: {avg_acc_eval}")
-
-                if avg_acc_eval >= best_acc:
-                    Logger.instance().debug(f"Found the best evaluation model at epoch {epoch}!")
-                    torch.save(self.model.state_dict(), val_model_path)
-            
-            # tensorboard
-            # https://stackoverflow.com/questions/48951136/plot-multiple-graphs-in-one-plot-using-tensorboard
-            self.writer.add_scalars("Loss", loss_dict, epoch)
-            self.writer.add_scalars("Accuracy", acc_dict, epoch)
-            
+            # save model
             if avg_acc >= best_acc:
                 Logger.instance().debug(f"Found the best model at epoch {epoch}!")
                 best_acc = avg_acc
                 torch.save(self.model.state_dict(), best_model_path)
 
             torch.save(self.model.state_dict(), last_model_path)
+            
+            # tensorboard
+            loss_dict = { "avg_loss": avg_loss }
+            acc_dict = { "avg_acc": avg_acc }
+
+            ## VALIDATION
+            if valloader is not None:
+                avg_loss_eval, avg_acc_eval = self.validate(config, valloader, val_loss, val_acc)
+                if avg_acc_eval >= best_acc:
+                    Logger.instance().debug(f"Found the best evaluation model at epoch {epoch}!")
+                    torch.save(self.model.state_dict(), val_model_path)
+
+                # tensorboard
+                loss_dict["avg_loss_eval"] = avg_loss_eval
+                acc_dict["avg_acc_eval"] = avg_acc_eval    
+            ## EOF: VALIDATION
+            
+            # tensorboard
+            # https://stackoverflow.com/questions/48951136/plot-multiple-graphs-in-one-plot-using-tensorboard
+            self.writer.add_scalars("Loss", loss_dict, epoch)
+            self.writer.add_scalars("Accuracy", acc_dict, epoch)
 
         # tensorboard
         self.writer.close()
@@ -146,6 +145,8 @@ class ProtoRoutine(TrainTest):
             val_acc.append(acc.item())
         avg_loss_eval = np.mean(val_loss[-config.fsl.episodes:])
         avg_acc_eval = np.mean(val_acc[-config.fsl.episodes:])
+
+        Logger.instance().debug(f"Avg Val Loss: {avg_loss_eval}, Avg Val Acc: {avg_acc_eval}")
 
         return avg_loss_eval, avg_acc_eval
 
