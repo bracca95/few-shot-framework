@@ -7,7 +7,7 @@ Your own dataset can be built by inheriting from the abstract class `CustomDatas
 ```
 "dataset_path": string,
 "dataset_type": {'all' (all defects), 'binary' (bubble vs points)},
-"dataset_splits": List[float],
+"dataset_splits": List[float] (1 for train/test (e.g. [0.8]), 3 for train/val/test), 
 "batch_size": int,
 "epochs": int,
 "crop_size": int (suggested 28),

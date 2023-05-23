@@ -38,7 +38,7 @@ class DefectViews(CustomDataset):
         self.augment_online: Optional[List[str]] = aug_on
         self.augment_offline: Optional[List[str]] = aug_off
         if self.augment_offline is not None:
-            self.augment_dataset(30)
+            self.augment_dataset(50)
 
         self.image_list: Optional[List[str]] = self.get_image_list(self.filt)
         self.label_list: Optional[List[int]] = self.get_label_list()

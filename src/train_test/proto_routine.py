@@ -6,6 +6,7 @@ import numpy as np
 from tqdm import tqdm
 from torch import nn
 from torch.utils.data import DataLoader
+from typing import List
 
 from src.datasets.defectviews import DefectViews
 from src.models.FSL.ProtoNet.proto_batch_sampler import PrototypicalBatchSampler
@@ -27,6 +28,7 @@ class ProtoRoutine(TrainTest):
         self.lr_scheduler_gamma = 0.5
         self.lr_scheduler_step = 20
 
+        # tensorboard
         self.writer = TBWriter.instance().get_writer()
 
     def init_loader(self, config: Config, split_set: str):
@@ -74,8 +76,9 @@ class ProtoRoutine(TrainTest):
         if not os.path.exists(out_folder):
             os.makedirs(out_folder)
 
-        best_model_path = os.path.join(out_folder, 'best_model.pth')
-        last_model_path = os.path.join(out_folder, 'last_model.pth')
+        best_model_path = os.path.join(out_folder, "best_model.pth")
+        last_model_path = os.path.join(out_folder, "last_model.pth")
+        val_model_path = os.path.join(out_folder, "val_model.pth")
 
         for epoch in range(config.epochs):
             Logger.instance().debug(f"=== Epoch: {epoch} ===")
@@ -94,40 +97,57 @@ class ProtoRoutine(TrainTest):
             avg_acc = np.mean(train_acc[-config.fsl.episodes:])
             lr_scheduler.step()
             
-            self.writer.add_scalar("Loss", avg_loss, epoch)
-            self.writer.add_scalar("Accuracy", avg_acc, epoch)
             Logger.instance().debug(f"Avg Train Loss: {avg_loss}, Avg Train Acc: {avg_acc}")
             
+            # tensorboard
+            loss_dict = { "avg_loss": avg_loss }
+            acc_dict = { "avg_acc": avg_acc }
+
             # if validation is required
             if valloader is not None:
-                Logger.instance().debug("Validating!")
-                val_iter = iter(valloader)
-                self.model.eval()
-                for batch in val_iter:
-                    x, y = batch
-                    x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
-                    model_output = self.model(x)
-                    loss, acc = loss_fn(model_output, target=y, n_support=config.fsl.test_k_shot_s)
-                    val_loss.append(loss.item())
-                    val_acc.append(acc.item())
-                avg_loss = np.mean(val_loss[-config.fsl.episodes:])
-                avg_acc = np.mean(val_acc[-config.fsl.episodes:])
-                postfix = f" (Best)" if avg_acc >= best_acc else f" (Best: {best_acc})"
-                Logger.instance().debug(f"Avg Val Loss: {avg_loss}, Avg Val Acc: {avg_acc}{postfix}")
+                avg_loss_eval, avg_acc_eval = self.validate(config, valloader, val_loss, val_acc)
+
+                # tensorboard
+                loss_dict["avg_loss_eval"] = avg_loss_eval
+                acc_dict["avg_acc_eval"] = avg_acc_eval
+
+                Logger.instance().debug(f"Avg Val Loss: {avg_loss_eval}, Avg Val Acc: {avg_acc_eval}")
+
+                if avg_acc_eval >= best_acc:
+                    Logger.instance().debug(f"Found the best evaluation model at epoch {epoch}!")
+                    torch.save(self.model.state_dict(), val_model_path)
+            
+            # tensorboard
+            # https://stackoverflow.com/questions/48951136/plot-multiple-graphs-in-one-plot-using-tensorboard
+            self.writer.add_scalars("Loss", loss_dict, epoch)
+            self.writer.add_scalars("Accuracy", acc_dict, epoch)
             
             if avg_acc >= best_acc:
                 Logger.instance().debug(f"Found the best model at epoch {epoch}!")
-                torch.save(self.model.state_dict(), best_model_path)
                 best_acc = avg_acc
-                best_state = self.model.state_dict()
                 torch.save(self.model.state_dict(), best_model_path)
 
             torch.save(self.model.state_dict(), last_model_path)
 
+        # tensorboard
         self.writer.close()
 
         for name in ['train_loss', 'train_acc', 'val_loss', 'val_acc']:
             self.save_list_to_file(os.path.join(out_folder, name + '.txt'), locals()[name])
+
+    def validate(self, config: Config, valloader: DataLoader, val_loss: List[float], val_acc: List[float]):
+        Logger.instance().debug("Validating!")
+        self.model.eval()
+        for x, y in valloader:
+            x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
+            model_output = self.model(x)
+            loss, acc = loss_fn(model_output, target=y, n_support=config.fsl.test_k_shot_s)
+            val_loss.append(loss.item())
+            val_acc.append(acc.item())
+        avg_loss_eval = np.mean(val_loss[-config.fsl.episodes:])
+        avg_acc_eval = np.mean(val_acc[-config.fsl.episodes:])
+
+        return avg_loss_eval, avg_acc_eval
 
     def test(self, config: Config, model_path: str):
         Logger.instance().debug("Start testing")
