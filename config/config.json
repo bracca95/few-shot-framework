@@ -9,20 +9,20 @@
     "batch_size": 32,
     "epochs": 100,
     "crop_size": 28,
-    "image_size": 64,
+    "image_size": 28,
     "augment_online": null,
     "augment_offline": [
         "break",
         "mark"
     ],
     "dataset_mean": [
-        0.5272814631462097
+        0.5271758437156677
     ],
     "dataset_std": [
-        0.08722430467605591
+        0.0862155631184578
     ],
     "fsl": {
-        "model": "mlp",
+        "model": "cnn",
         "episodes": 100,
         "train_n_way": 6,
         "train_k_shot_s": 5,
@@ -30,6 +30,6 @@
         "test_n_way": 6,
         "test_k_shot_s": 5,
         "test_k_shot_q": 5,
-        "model_test_path": "output/train_vals/mlp_1_s655_q655/val_model.pth"
+        "model_test_path": "output/train_vals/basic_cnn_1/val_model.pth"
     }
 }
