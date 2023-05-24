@@ -21,6 +21,7 @@ Your own dataset can be built by inheriting from the abstract class `CustomDatas
 If ProtoNet is required, add a new fields "fsl":
 ```
 "fsl": {
+  "model": str {"default", "mlp"},
   "episodes": int (suggested 100),
   "train_n_way": int,
   "train_k_shot_s": int

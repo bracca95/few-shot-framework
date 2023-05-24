@@ -33,6 +33,7 @@ class ConfigConst:
 
 
 class FSLConsts:
+    FSL_MODEL = "model"
     FSL_EPISODES = "episodes"
     FSL_TRAIN_N_WAY = "train_n_way"
     FSL_TRAIN_K_SHOT_S = "train_k_shot_s"
@@ -40,3 +41,4 @@ class FSLConsts:
     FSL_TEST_N_WAY = "test_n_way"
     FSL_TEST_K_SHOT_S = "test_k_shot_s"
     FSL_TEST_K_SHOT_Q = "test_k_shot_q"
+    FSL_MODEL_TEST_PATH = "model_test_path"

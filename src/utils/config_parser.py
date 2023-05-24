@@ -54,6 +54,7 @@ def to_class(c: Type[T], x: Any) -> dict:
 
 @dataclass
 class Fsl:
+    model: str
     episodes: int
     train_n_way: int
     train_k_shot_s: int
@@ -61,12 +62,14 @@ class Fsl:
     test_n_way: int
     test_k_shot_s: int
     test_k_shot_q: int
+    model_test_path: Optional[str] = None
 
     @classmethod
     def deserialize(cls, obj: Any) -> 'Fsl':
         
         try:
             Tools.check_instance(obj, dict)
+            model = from_str(obj.get(_CFSL.FSL_MODEL))
             episodes = from_int(obj.get(_CFSL.FSL_EPISODES))
             train_n_way = from_int(obj.get(_CFSL.FSL_TRAIN_N_WAY))
             train_k_shot_s = from_int(obj.get(_CFSL.FSL_TRAIN_K_SHOT_S))
@@ -74,19 +77,29 @@ class Fsl:
             test_n_way = from_int(obj.get(_CFSL.FSL_TEST_N_WAY))
             test_k_shot_s = from_int(obj.get(_CFSL.FSL_TEST_K_SHOT_S))
             test_k_shot_q = from_int(obj.get(_CFSL.FSL_TEST_K_SHOT_Q))
-            
+            model_test_path = from_union([from_none, from_str], obj.get(_CFSL.FSL_MODEL_TEST_PATH))
         except TypeError as te:
             Logger.instance().error(te.args)
             sys.exit(-1)
 
-        Logger.instance().debug(f"episodes: {episodes}, train_n_way: {train_n_way}, train_k_shot_s: {train_k_shot_s}, " +
-                                f"train_k_shot_q: {train_k_shot_q}, test_n_way: {test_n_way}, " +
-                                f"test_k_shot_s: {test_k_shot_s}, test_k_shot_q: {test_k_shot_q}")
-        return Fsl(episodes, train_n_way, train_k_shot_s, train_k_shot_q, test_n_way, test_k_shot_s, test_k_shot_q)
+        if model_test_path is not None:
+            try:
+                model_test_path = Tools.validate_path(model_test_path)
+            except FileNotFoundError as fnf:
+                msg = f"Check the test path again"
+                Logger.instance().critical(f"{fnf.args}.\n{msg}")
+                sys.exit(-1)
+
+        Logger.instance().debug(f"model: {model}, episodes: {episodes}, train_n_way: {train_n_way}, " +
+                                f"train_k_shot_s: {train_k_shot_s}, train_k_shot_q: {train_k_shot_q}, " +
+                                f"test_n_way: {test_n_way}, test_k_shot_s: {test_k_shot_s}, " +
+                                f"test_k_shot_q: {test_k_shot_q}, model_test_path: {model_test_path}")
+        return Fsl(model, episodes, train_n_way, train_k_shot_s, train_k_shot_q, test_n_way, test_k_shot_s, test_k_shot_q, model_test_path)
 
     def serialize(self) -> dict:
         result: dict = {}
         
+        result[_CFSL.FSL_MODEL] = from_str(self.model)
         result[_CFSL.FSL_EPISODES] = from_int(self.episodes)
         result[_CFSL.FSL_TRAIN_N_WAY] = from_int(self.train_n_way)
         result[_CFSL.FSL_TRAIN_K_SHOT_S] = from_int(self.train_k_shot_s)
@@ -94,6 +107,7 @@ class Fsl:
         result[_CFSL.FSL_TEST_N_WAY] = from_int(self.test_n_way)
         result[_CFSL.FSL_TEST_K_SHOT_S] = from_int(self.test_k_shot_s)
         result[_CFSL.FSL_TEST_K_SHOT_Q] = from_int(self.test_k_shot_q)
+        result[_CFSL.FSL_MODEL_TEST_PATH] = from_union([from_none, from_str], self.model_test_path)
 
         Logger.instance().info(f"ObjectList serialized: {result}")
         return result
@@ -107,7 +121,7 @@ class Config:
     batch_size: int = _CG.DEFAULT_INT
     epochs: int = _CG.DEFAULT_INT
     crop_size: int = _CG.DEFAULT_INT
-    image_size: Optional[int] = None
+    image_size: int = _CG.DEFAULT_INT
     augment_online: Optional[List[str]] = None
     augment_offline: Optional[List[str]] = None
     dataset_mean: Optional[List[float]] = None
@@ -132,7 +146,7 @@ class Config:
             batch_size = from_int(obj.get(_CC.CONFIG_BATCH_SIZE))
             epochs = from_int(obj.get(_CC.CONFIG_EPOCHS))
             crop_size = from_int(obj.get(_CC.CONFIG_CROP_SIZE))
-            image_size = from_union([from_none, from_int], obj.get(_CC.CONFIG_IMAGE_SIZE))
+            image_size = from_int(obj.get(_CC.CONFIG_IMAGE_SIZE))
             augment_online = from_union([lambda x: from_list(from_str, x), from_none], obj.get(_CC.CONFIG_AUGMENT_ONLINE))
             augment_offline = from_union([lambda x: from_list(from_str, x), from_none], obj.get(_CC.CONFIG_AUGMENT_OFFLINE))
             dataset_mean = from_union([lambda x: from_list(from_float, x), from_none], obj.get(_CC.CONFIG_DATASET_MEAN))
@@ -184,7 +198,7 @@ class Config:
         result[_CC.CONFIG_BATCH_SIZE] = from_int(self.batch_size)
         result[_CC.CONFIG_EPOCHS] = from_int(self.epochs)
         result[_CC.CONFIG_CROP_SIZE] = from_int(self.crop_size)
-        result[_CC.CONFIG_IMAGE_SIZE] = from_union([from_none, from_int], self.image_size)
+        result[_CC.CONFIG_IMAGE_SIZE] = from_int(self.image_size)
         result[_CC.CONFIG_AUGMENT_ONLINE] = from_union([lambda x: from_list(from_str, x), from_none], self.augment_online)
         result[_CC.CONFIG_AUGMENT_OFFLINE] = from_union([lambda x: from_list(from_str, x), from_none], self.augment_offline)
         result[_CC.CONFIG_DATASET_MEAN] = from_union([lambda x: from_list(from_float, x), from_none], self.dataset_mean)

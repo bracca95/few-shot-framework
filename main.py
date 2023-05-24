@@ -4,7 +4,7 @@ import torch
 import random
 import numpy as np
 
-from src.models.model_utils import Model
+from src.models.model_utils import ModelBuilder
 from src.models.FSL.ProtoNet.protonet import ProtoNet
 from src.train_test.routine import TrainTestExample
 from src.train_test.proto_routine import ProtoRoutine
@@ -22,6 +22,11 @@ torch.manual_seed(SEED)
 torch.cuda.manual_seed(SEED)
 torch.backends.cudnn.deterministic = True
 
+
+### TODOs ###
+# label_to_idx for abstract class CustomDataset
+# online augmentation
+#############
 
 if __name__=="__main__":
     try:
@@ -45,20 +50,23 @@ if __name__=="__main__":
     # store config so that you know what you have run :)
     config.serialize(os.path.join(os.getcwd(), "output"), "out_config.json")
 
-    ## TODO: Create model instantiator
-    ## TODO: online augmentation
-    ## TODO: tensorboard
-    # train, (val), test split
-    model = ProtoNet().to(_CG.DEVICE)
-    model_path = os.path.join(os.getcwd(), "output/best_model.pth")
+    # instantiate model
+    try:
+        model = ModelBuilder.load_dataset(config, len(dataset.label_to_idx))
+        model = model.to(_CG.DEVICE)
+    except ValueError as ve:
+        Logger.instance().critical(ve.args)
+        sys.exit(-1)
     
-    # split dataset
+    # split dataset: train, (val), test
     subsets_dict = DefectViews.split_dataset(dataset, config.dataset_splits)
     
     # train/test
     routine = ProtoRoutine(model, dataset, subsets_dict)
-    if not os.path.exists(model_path) or (os.path.exists(model_path) and not os.path.isfile(model_path)):
+    
+    if config.fsl.model_test_path is None:
         routine.train(config)
-    else:
-        Logger.instance().warning("A model exists in output dir. Remove it or rename it if you want to train again.")
+        model_path = os.path.join(os.getcwd(), "output/best_model.pth")
+    
+    model_path = config.fsl.model_test_path if config.fsl.model_test_path is not None else model_path
     routine.test(config, model_path)
