@@ -77,10 +77,11 @@ class ProtoRoutine(TrainTest):
             os.makedirs(out_folder)
 
         best_model_path = os.path.join(out_folder, "best_model.pth")
-        last_model_path = os.path.join(out_folder, "last_model.pth")
         val_model_path = os.path.join(out_folder, "val_model.pth")
+        last_model_path = os.path.join(out_folder, "last_model.pth")
+        last_val_model_path = os.path.join(out_folder, "last_val_model.pth")
 
-        for epoch in range(config.epochs):
+        for eidx, epoch in enumerate(range(config.epochs)):
             Logger.instance().debug(f"=== Epoch: {epoch} ===")
             self.model.train()
             for x, y in tqdm(trainloader):
@@ -104,8 +105,6 @@ class ProtoRoutine(TrainTest):
                 Logger.instance().debug(f"Found the best model at epoch {epoch}!")
                 best_acc = avg_acc
                 torch.save(self.model.state_dict(), best_model_path)
-
-            torch.save(self.model.state_dict(), last_model_path)
             
             # tensorboard
             loss_dict = { "avg_loss": avg_loss }
@@ -127,6 +126,12 @@ class ProtoRoutine(TrainTest):
             # https://stackoverflow.com/questions/48951136/plot-multiple-graphs-in-one-plot-using-tensorboard
             self.writer.add_scalars("Loss", loss_dict, epoch)
             self.writer.add_scalars("Accuracy", acc_dict, epoch)
+
+            # save last model
+            if eidx == config.epochs-1:
+                pth_path = last_val_model_path if valloader is not None else last_model_path
+                Logger.instance().debug(f"saving last epoch model named `{os.path.basename(pth_path)}`")
+                torch.save(self.model.state_dict(), pth_path)
 
         # tensorboard
         self.writer.close()

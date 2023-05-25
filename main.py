@@ -52,7 +52,7 @@ if __name__=="__main__":
 
     # instantiate model
     try:
-        model = ModelBuilder.load_dataset(config, len(dataset.label_to_idx))
+        model = ModelBuilder.load_model(config, len(dataset.label_to_idx))
         model = model.to(_CG.DEVICE)
     except ValueError as ve:
         Logger.instance().critical(ve.args)
