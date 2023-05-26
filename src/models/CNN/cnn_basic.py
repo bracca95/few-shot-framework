@@ -25,3 +25,22 @@ class CNN(nn.Module):
         out = self.seq2(out)
 
         return out.view(out.size(0), -1)
+    
+
+class CNNCompare(CNN):
+
+    def __init__(self, out_feat: int):
+        super().__init__()
+        self.out_feat = out_feat
+
+        self.fc1 = nn.Sequential(
+            nn.Linear(32 * 7 * 7, self.out_feat),
+            nn.Softmax()
+        )
+
+    def forward(self, x):
+        out = self.seq1(x)
+        out = self.seq2(out)
+
+        out = out.view(out.size(0), -1)
+        return self.fc1(out)

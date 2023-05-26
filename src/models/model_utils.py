@@ -1,7 +1,7 @@
 from torch import nn
 
 from src.models.MLP.mlp_basic import MLP
-from src.models.CNN.cnn_basic import CNN
+from src.models.CNN.cnn_basic import CNN, CNNCompare
 from src.models.FSL.ProtoNet.protonet import ProtoNet
 from src.models.pretrained.extractors import TimmFeatureExtractor
 from src.utils.config_parser import Config
@@ -24,5 +24,7 @@ class ModelBuilder:
             return CNN()
         elif config.fsl.model.lower() in ("resnet50"):
             return TimmFeatureExtractor(config.fsl.model.lower(), in_chans=1, pooled=True, mean=config.dataset_mean, std=config.dataset_std)
+        elif config.fsl.model.lower() == "cnncompare":
+            return CNNCompare(out_classes)
         else:
             raise ValueError(f"fsl.model must be { {'default', 'mlp', 'cnn', 'resnet50'} }. You wrote: {config.fsl.model}")

@@ -8,7 +8,6 @@ from torch import nn
 from torch.utils.data import DataLoader
 from typing import List
 
-from src.datasets.defectviews import DefectViews
 from src.models.FSL.ProtoNet.proto_batch_sampler import PrototypicalBatchSampler
 from src.models.FSL.ProtoNet.proto_loss import prototypical_loss as loss_fn
 from src.models.FSL.ProtoNet.proto_loss import proto_test

@@ -8,6 +8,7 @@ from src.models.model_utils import ModelBuilder
 from src.models.FSL.ProtoNet.protonet import ProtoNet
 from src.train_test.routine import TrainTestExample
 from src.train_test.proto_routine import ProtoRoutine
+from src.train_test.standard_routine import StandardRoutine
 from src.datasets.defectviews import DefectViews
 from src.datasets.dataset_utils import DatasetBuilder
 from src.utils.config_parser import Config
@@ -62,7 +63,7 @@ if __name__=="__main__":
     subsets_dict = DefectViews.split_dataset(dataset, config.dataset_splits)
     
     # train/test
-    routine = ProtoRoutine(model, dataset, subsets_dict)
+    routine = StandardRoutine(model, dataset, subsets_dict)
     
     if config.fsl.model_test_path is None:
         routine.train(config)
