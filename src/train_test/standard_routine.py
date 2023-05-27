@@ -1,6 +1,7 @@
 import os
 import sys
 import torch
+import wandb
 
 from typing import Union, List
 from tqdm import tqdm
@@ -13,7 +14,7 @@ from config.consts import General as _CG
 from config.consts import SubsetsDict
 from src.train_test.routine import TrainTest
 from src.utils.config_parser import Config
-from src.utils.tools import Logger, TBWriter, Tools
+from src.utils.tools import Logger, Tools
 
 
 class StandardRoutine(TrainTest):
@@ -23,9 +24,6 @@ class StandardRoutine(TrainTest):
 
         self.criterion = nn.CrossEntropyLoss()
         self.criterion.to(_CG.DEVICE)
-
-        # tensorboard
-        self.writer = TBWriter.instance().get_writer()
 
     @staticmethod
     def compute_accuracy(y_pred: torch.Tensor, y: torch.Tensor):
@@ -50,13 +48,10 @@ class StandardRoutine(TrainTest):
         
         optim = torch.optim.Adam(params=self.model.parameters(), lr=0.001)
         
-        # tensorboard
+        # wandb
         example_data, examples_target = next(iter(trainloader))
-        shape = config.crop_size if config.image_size is None else config.image_size
-        #self.writer.add_graph(self.model, example_data.to(self.device))
         img_grid = make_grid(example_data)
-        self.writer.add_image('images', img_grid)
-        self.writer.close()
+        wandb.log({"examples": wandb.Image(img_grid, caption="Top: Output, Bottom: Input")})
 
         # create output folder to store data
         out_folder = os.path.join(os.getcwd(), "output")
@@ -101,9 +96,8 @@ class StandardRoutine(TrainTest):
                 torch.save(self.model.state_dict(), best_model_path)
                 Logger.instance().debug(f"saving model at iteration {epoch}.")
 
-            # tensorboard
-            loss_dict = { "epoch_loss": epoch_loss }
-            acc_dict = { "epoch_acc": epoch_acc }
+            # wandb
+            wdb_dict = { "train_loss": epoch_loss, "train_acc": epoch_acc }
 
             ## VALIDATION
             if valloader is not None:
@@ -112,23 +106,19 @@ class StandardRoutine(TrainTest):
                     Logger.instance().debug(f"Found the best evaluation model at epoch {epoch}!")
                     torch.save(self.model.state_dict(), val_model_path)
 
-                # tensorboard
-                loss_dict["epoch_loss_eval"] = epoch_loss_eval
-                acc_dict["epoch_acc_eval"] = epoch_acc_eval    
+                # wandb
+                wdb_dict["val_loss"] = epoch_loss_eval
+                wdb_dict["val_acc"] = epoch_acc_eval
             ## EOF: VALIDATION
 
-            # tensorboard
-            # https://stackoverflow.com/questions/48951136/plot-multiple-graphs-in-one-plot-using-tensorboard
-            self.writer.add_scalars("Loss", loss_dict, epoch)
-            self.writer.add_scalars("Accuracy", acc_dict, epoch)
+            # wandb
+            wandb.log(wdb_dict)
 
             # save last model
             if eidx == config.epochs-1:
                 pth_path = last_val_model_path if valloader is not None else last_model_path
                 Logger.instance().debug(f"saving last epoch model named `{os.path.basename(pth_path)}`")
                 torch.save(self.model.state_dict(), pth_path)
-
-        self.writer.close()
 
     def validate(self, config: Config, valloader: DataLoader):
         Logger.instance().debug("Validating!")
@@ -196,18 +186,11 @@ class StandardRoutine(TrainTest):
                 tot_samples += labels.size(0)
                 tot_correct += n_correct
 
+                wandb.log({"pr_curve": wandb.plot.pr_curve(labels.cpu().detach().numpy(), y_pred.cpu().detach().numpy())})
+
                 # precision-recall curve
                 prcurve_labels.extend(labels)
                 prcurve_predic.append(y_pred)
 
             acc = tot_correct / tot_samples
             Logger.instance().debug(f"Test accuracy on {len(self.test_info.subset.indices)} images: {acc:.3f}")
-
-        # https://pytorch.org/docs/stable/tensorboard.html#torch.utils.tensorboard.writer.SummaryWriter.add_pr_curve
-        # https://pytorch.org/tutorials/intermediate/tensorboard_tutorial.html#assessing-trained-models-with-tensorboard
-        test_probs = torch.cat([torch.stack(tuple(batch)) for batch in prcurve_predic])
-        for i in range(len(self.test_info.info_dict)):
-            truth = list(map(lambda x: x == i, prcurve_labels))
-            probs = test_probs[:, i]
-            self.writer.add_pr_curve(str(i), torch.Tensor(truth), probs.cpu(), global_step=0, num_thresholds=1000)
-            self.writer.close()

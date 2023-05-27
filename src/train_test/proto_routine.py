@@ -1,6 +1,7 @@
 import os
 import sys
 import torch
+import wandb
 import numpy as np
 
 from tqdm import tqdm
@@ -11,7 +12,7 @@ from typing import List
 from src.models.FSL.ProtoNet.proto_batch_sampler import PrototypicalBatchSampler
 from src.models.FSL.ProtoNet.proto_loss import prototypical_loss as loss_fn
 from src.models.FSL.ProtoNet.proto_loss import proto_test
-from src.utils.tools import Tools, Logger, TBWriter
+from src.utils.tools import Tools, Logger
 from src.utils.config_parser import Config
 from src.datasets.defectviews import DefectViews
 from src.train_test.routine import TrainTest
@@ -26,9 +27,6 @@ class ProtoRoutine(TrainTest):
         self.learning_rate = 0.001
         self.lr_scheduler_gamma = 0.5
         self.lr_scheduler_step = 20
-
-        # tensorboard
-        self.writer = TBWriter.instance().get_writer()
 
     def init_loader(self, config: Config, split_set: str):
         current_subset = self.get_subset_info(split_set)
@@ -105,9 +103,8 @@ class ProtoRoutine(TrainTest):
                 best_acc = avg_acc
                 torch.save(self.model.state_dict(), best_model_path)
             
-            # tensorboard
-            loss_dict = { "avg_loss": avg_loss }
-            acc_dict = { "avg_acc": avg_acc }
+            # wandb
+            wdb_dict = { "train_loss": avg_loss, "train_acc": avg_acc }
 
             ## VALIDATION
             if valloader is not None:
@@ -116,24 +113,19 @@ class ProtoRoutine(TrainTest):
                     Logger.instance().debug(f"Found the best evaluation model at epoch {epoch}!")
                     torch.save(self.model.state_dict(), val_model_path)
 
-                # tensorboard
-                loss_dict["avg_loss_eval"] = avg_loss_eval
-                acc_dict["avg_acc_eval"] = avg_acc_eval    
+                # wandb
+                wdb_dict["val_loss"] = avg_loss_eval
+                wdb_dict["val_acc"] = avg_acc_eval    
             ## EOF: VALIDATION
             
-            # tensorboard
-            # https://stackoverflow.com/questions/48951136/plot-multiple-graphs-in-one-plot-using-tensorboard
-            self.writer.add_scalars("Loss", loss_dict, epoch)
-            self.writer.add_scalars("Accuracy", acc_dict, epoch)
+            # wandb
+            wandb.log(wdb_dict)
 
             # save last model
             if eidx == config.epochs-1:
                 pth_path = last_val_model_path if valloader is not None else last_model_path
                 Logger.instance().debug(f"saving last epoch model named `{os.path.basename(pth_path)}`")
                 torch.save(self.model.state_dict(), pth_path)
-
-        # tensorboard
-        self.writer.close()
 
         for name in ['train_loss', 'train_acc', 'val_loss', 'val_acc']:
             self.save_list_to_file(os.path.join(out_folder, name + '.txt'), locals()[name])
