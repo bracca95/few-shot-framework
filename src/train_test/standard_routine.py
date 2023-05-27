@@ -3,13 +3,12 @@ import sys
 import torch
 import wandb
 
-from typing import Union, List
 from tqdm import tqdm
 from torch import nn
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
 
-from src.datasets.defectviews import DefectViews
+from src.datasets.staple_dataset import CustomDataset
 from config.consts import General as _CG
 from config.consts import SubsetsDict
 from src.train_test.routine import TrainTest
@@ -19,7 +18,7 @@ from src.utils.tools import Logger, Tools
 
 class StandardRoutine(TrainTest):
 
-    def __init__(self, model: nn.Module, dataset: DefectViews, subsets_dict: SubsetsDict):
+    def __init__(self, model: nn.Module, dataset: CustomDataset, subsets_dict: SubsetsDict):
         super().__init__(model, dataset, subsets_dict)
 
         self.criterion = nn.CrossEntropyLoss()
