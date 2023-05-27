@@ -24,7 +24,6 @@ torch.backends.cudnn.deterministic = True
 
 
 ### TODOs ###
-# label_to_idx for abstract class CustomDataset
 # online augmentation
 #############
 

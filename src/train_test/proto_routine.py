@@ -8,13 +8,12 @@ from torch import nn
 from torch.utils.data import DataLoader
 from typing import List
 
-from src.datasets.defectviews import DefectViews
 from src.models.FSL.ProtoNet.proto_batch_sampler import PrototypicalBatchSampler
 from src.models.FSL.ProtoNet.proto_loss import prototypical_loss as loss_fn
 from src.models.FSL.ProtoNet.proto_loss import proto_test
 from src.utils.tools import Tools, Logger, TBWriter
 from src.utils.config_parser import Config
-from src.datasets.defectviews import DefectViews
+from src.datasets.staple_dataset import CustomDataset
 from src.train_test.routine import TrainTest
 from config.consts import General as _CG
 from config.consts import SubsetsDict
@@ -22,7 +21,7 @@ from config.consts import SubsetsDict
 
 class ProtoRoutine(TrainTest):
 
-    def __init__(self, model: nn.Module, dataset: DefectViews, subsets_dict: SubsetsDict):
+    def __init__(self, model: nn.Module, dataset: CustomDataset, subsets_dict: SubsetsDict):
         super().__init__(model, dataset, subsets_dict)
         self.learning_rate = 0.001
         self.lr_scheduler_gamma = 0.5
