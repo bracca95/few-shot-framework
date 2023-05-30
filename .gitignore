@@ -7,11 +7,12 @@ output/
 
 # specific files
 .DS_Store
-*.log
 processed_json.json
 
 # extensions
-*.txt
+*.log
 *.pt
 *.pth
 *.pyc
+*.txt
+!requirements.txt
