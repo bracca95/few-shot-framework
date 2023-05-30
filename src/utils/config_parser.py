@@ -90,7 +90,7 @@ class Fsl:
                 Logger.instance().critical(f"{fnf.args}.\n{msg}")
                 sys.exit(-1)
 
-        Logger.instance().debug(f"model: {model}, episodes: {episodes}, train_n_way: {train_n_way}, " +
+        Logger.instance().info(f"model: {model}, episodes: {episodes}, train_n_way: {train_n_way}, " +
                                 f"train_k_shot_s: {train_k_shot_s}, train_k_shot_q: {train_k_shot_q}, " +
                                 f"test_n_way: {test_n_way}, test_k_shot_s: {test_k_shot_s}, " +
                                 f"test_k_shot_q: {test_k_shot_q}, model_test_path: {model_test_path}")

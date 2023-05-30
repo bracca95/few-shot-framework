@@ -29,15 +29,6 @@ torch.backends.cudnn.deterministic = True
 if __name__=="__main__":
     try:
         config = Config.deserialize("config/config.json")
-        wandb.init(
-            project="output_wandb",
-            config={
-                "learning_rate": 0.001,
-                "architecture": config.fsl.model,
-                "dataset": config.dataset_type,
-                "epochs": config.epochs,
-            }
-        )
     except Exception as e:
         Logger.instance().critical(e.args)
         sys.exit(-1)
@@ -54,8 +45,16 @@ if __name__=="__main__":
         DefectViews.compute_mean_std(dataset, config)
         sys.exit(0)
 
-    # store config so that you know what you have run :)
-    config.serialize(os.path.join(os.getcwd(), "output"), "out_config.json")
+    ## start program
+    wandb.init(
+        project="standard_classification",
+        config={
+            "learning_rate": 0.001,
+            "architecture": config.fsl.model,
+            "dataset": config.dataset_type,
+            "epochs": config.epochs,
+        }
+    )
 
     # instantiate model
     try:
@@ -78,4 +77,5 @@ if __name__=="__main__":
     model_path = config.fsl.model_test_path if config.fsl.model_test_path is not None else model_path
     routine.test(config, model_path)
 
+    wandb.save("log.log")
     wandb.finish()

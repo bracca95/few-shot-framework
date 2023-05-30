@@ -15,12 +15,8 @@
         "break",
         "mark"
     ],
-    "dataset_mean": [
-        0.5271758437156677
-    ],
-    "dataset_std": [
-        0.0862155631184578
-    ],
+    "dataset_mean": null,
+    "dataset_std": null,
     "fsl": {
         "model": "cnncompare",
         "episodes": 100,

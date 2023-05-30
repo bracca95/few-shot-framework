@@ -95,6 +95,9 @@ class StandardRoutine(TrainTest):
                 torch.save(self.model.state_dict(), best_model_path)
                 Logger.instance().debug(f"saving model at iteration {epoch}.")
 
+            if epoch_loss < best_loss:
+                best_loss = epoch_loss
+
             # wandb
             wdb_dict = { "train_loss": epoch_loss, "train_acc": epoch_acc }
 
@@ -113,11 +116,16 @@ class StandardRoutine(TrainTest):
             # wandb
             wandb.log(wdb_dict)
 
-            # save last model
-            if eidx == config.epochs-1:
+            # stop conditions and save last model
+            if eidx == config.epochs-1 or best_acc >= 1.0-_CG.EPS_ACC or best_loss <= 0.0+_CG.EPS_LSS:
                 pth_path = last_val_model_path if valloader is not None else last_model_path
-                Logger.instance().debug(f"saving last epoch model named `{os.path.basename(pth_path)}`")
+                Logger.instance().debug(f"STOP: saving last epoch model named `{os.path.basename(pth_path)}`")
                 torch.save(self.model.state_dict(), pth_path)
+
+                # wandb: save all models
+                wandb.save(f"{out_folder}/*.pth")
+
+                return
 
     def validate(self, config: Config, valloader: DataLoader):
         Logger.instance().debug("Validating!")
