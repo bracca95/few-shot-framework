@@ -1,6 +1,7 @@
 import os
 import sys
 import torch
+import wandb
 import numpy as np
 
 from tqdm import tqdm
@@ -11,7 +12,7 @@ from typing import List
 from src.models.FSL.ProtoNet.proto_batch_sampler import PrototypicalBatchSampler
 from src.models.FSL.ProtoNet.proto_loss import prototypical_loss as loss_fn
 from src.models.FSL.ProtoNet.proto_loss import proto_test
-from src.utils.tools import Tools, Logger, TBWriter
+from src.utils.tools import Tools, Logger
 from src.utils.config_parser import Config
 from src.datasets.staple_dataset import CustomDataset
 from src.train_test.routine import TrainTest
@@ -27,9 +28,6 @@ class ProtoRoutine(TrainTest):
         self.lr_scheduler_gamma = 0.5
         self.lr_scheduler_step = 20
 
-        # tensorboard
-        self.writer = TBWriter.instance().get_writer()
-
     def init_loader(self, config: Config, split_set: str):
         current_subset = self.get_subset_info(split_set)
         if current_subset.subset is None:
@@ -43,11 +41,6 @@ class ProtoRoutine(TrainTest):
             config.fsl.episodes
         )
         return DataLoader(current_subset.subset, batch_sampler=sampler)
-    
-    def save_list_to_file(self, path, thelist):
-        with open(path, 'w') as f:
-            for item in thelist:
-                f.write(f"{item}\n")
 
     def train(self, config: Config):
         Logger.instance().debug("Start training")
@@ -69,6 +62,7 @@ class ProtoRoutine(TrainTest):
         val_loss = []
         val_acc = []
         best_acc = 0
+        best_loss = float("inf")
 
         # create output folder to store data
         out_folder = os.path.join(os.getcwd(), "output")
@@ -104,10 +98,12 @@ class ProtoRoutine(TrainTest):
                 Logger.instance().debug(f"Found the best model at epoch {epoch}!")
                 best_acc = avg_acc
                 torch.save(self.model.state_dict(), best_model_path)
+
+            if avg_loss < best_loss:
+                best_loss = avg_loss
             
-            # tensorboard
-            loss_dict = { "avg_loss": avg_loss }
-            acc_dict = { "avg_acc": avg_acc }
+            # wandb
+            wdb_dict = { "train_loss": avg_loss, "train_acc": avg_acc }
 
             ## VALIDATION
             if valloader is not None:
@@ -116,27 +112,24 @@ class ProtoRoutine(TrainTest):
                     Logger.instance().debug(f"Found the best evaluation model at epoch {epoch}!")
                     torch.save(self.model.state_dict(), val_model_path)
 
-                # tensorboard
-                loss_dict["avg_loss_eval"] = avg_loss_eval
-                acc_dict["avg_acc_eval"] = avg_acc_eval    
+                # wandb
+                wdb_dict["val_loss"] = avg_loss_eval
+                wdb_dict["val_acc"] = avg_acc_eval    
             ## EOF: VALIDATION
             
-            # tensorboard
-            # https://stackoverflow.com/questions/48951136/plot-multiple-graphs-in-one-plot-using-tensorboard
-            self.writer.add_scalars("Loss", loss_dict, epoch)
-            self.writer.add_scalars("Accuracy", acc_dict, epoch)
+            # wandb
+            wandb.log(wdb_dict)
 
-            # save last model
-            if eidx == config.epochs-1:
+            # stop conditions and save last model
+            if eidx == config.epochs-1 or best_acc >= 1.0-_CG.EPS_ACC or best_loss <= 0.0+_CG.EPS_LSS:
                 pth_path = last_val_model_path if valloader is not None else last_model_path
-                Logger.instance().debug(f"saving last epoch model named `{os.path.basename(pth_path)}`")
+                Logger.instance().debug(f"STOP: saving last epoch model named `{os.path.basename(pth_path)}`")
                 torch.save(self.model.state_dict(), pth_path)
 
-        # tensorboard
-        self.writer.close()
+                # wandb: save all models
+                wandb.save(f"{out_folder}/*.pth")
 
-        for name in ['train_loss', 'train_acc', 'val_loss', 'val_acc']:
-            self.save_list_to_file(os.path.join(out_folder, name + '.txt'), locals()[name])
+                return
 
     def validate(self, config: Config, valloader: DataLoader, val_loss: List[float], val_acc: List[float]):
         Logger.instance().debug("Validating!")

@@ -15,6 +15,8 @@ class General:
     DEFAULT_SUBSETS = ["train", "val", "test"]
     DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
     EPS = 0.001
+    EPS_ACC = 0.02
+    EPS_LSS = 0.03
 
 
 class ConfigConst:
