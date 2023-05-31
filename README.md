@@ -33,6 +33,19 @@ If ProtoNet is required, add a new fields "fsl":
 }
 ```
 
+## Docker
+If the use of Docker is required or desired, run the following two commands after installing Docker on the host machine:  
+`$ docker compose build`  
+`$ docker run --name <image_name> -v <host_path>:<docker_path> lollo/protonet`
+
+The first command reads both the `docker-compose.yml` file and the `Dockerfile` in the main directory, so check them out and perform the necessary changes before running it.
+
+The second command allows the mounting of the volume from the host machine to the docker container. In my case:   
+- host path is `/media/lorenzo/M/datasets/dataset_opt/2.3_dataset_opt`
+- docker path is `/media/` (in the docker [Linux] image)
+
+This holds true if the dataset path specified in `config.json` is `/media/views/img`. In essence, you are mounting the **content** of `2.3_dataset_opt` folder into the docker's `/media` directory. Hence, it will finally contain the `views` folder with its subdirectories.
+
 ## Models
 [ProtoNet implementation used](https://github.com/orobix/Prototypical-Networks-for-Few-shot-Learning-PyTorch).
 

@@ -1,5 +1,5 @@
 {
-    "dataset_path": "/media/lorenzo/M/datasets/dataset_opt/2.3_dataset_opt/views/img",
+    "dataset_path": "/media/views/img",
     "dataset_type": "all",
     "dataset_splits": [
         0.7,
