@@ -23,12 +23,12 @@
         0.07766749709844589
     ],
     "fsl": {
-        "model": "default",
+        "model": "cnn105",
         "episodes": 100,
-        "train_n_way": 6,
+        "train_n_way": 7,
         "train_k_shot_s": 5,
         "train_k_shot_q": 5,
-        "test_n_way": 6,
+        "test_n_way": 7,
         "test_k_shot_s": 5,
         "test_k_shot_q": 5,
         "model_test_path": null

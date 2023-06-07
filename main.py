@@ -7,13 +7,12 @@ import numpy as np
 
 from src.models.model_utils import ModelBuilder
 from src.train_test.routine_utils import RoutineBuilder
-from src.datasets.defectviews import GlassOpt
 from src.datasets.dataset_utils import DatasetBuilder
 from src.utils.config_parser import Config
 from src.utils.tools import Logger
 from config.consts import General as _CG
 
-SEED = 1234         # with the first protonet implementation I used 7
+SEED = 123         # with the first protonet implementation I used 7
 
 random.seed(SEED)
 np.random.seed(SEED)
@@ -42,7 +41,7 @@ if __name__=="__main__":
     # compute mean and variance of the dataset if not done yet
     if config.dataset_mean is None and config.dataset_std is None:
         Logger.instance().warning("No mean and std set: computing and storing values.")
-        GlassOpt.compute_mean_std(dataset, config)
+        DatasetBuilder.compute_mean_std(dataset, config)
         sys.exit(0)
 
     ## start program
@@ -65,7 +64,7 @@ if __name__=="__main__":
         sys.exit(-1)
     
     # split dataset
-    subsets_dict = GlassOpt.split_dataset(dataset, config.dataset_splits)
+    subsets_dict = DatasetBuilder.split_dataset(dataset, config.dataset_splits)
     
     # train/test
     routine = RoutineBuilder.build_routine(config.fsl.model, model, dataset, subsets_dict)
