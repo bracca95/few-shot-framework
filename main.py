@@ -7,7 +7,7 @@ import numpy as np
 
 from src.models.model_utils import ModelBuilder
 from src.train_test.routine_utils import RoutineBuilder
-from src.datasets.defectviews import DefectViews
+from src.datasets.defectviews import GlassOpt
 from src.datasets.dataset_utils import DatasetBuilder
 from src.utils.config_parser import Config
 from src.utils.tools import Logger
@@ -42,12 +42,12 @@ if __name__=="__main__":
     # compute mean and variance of the dataset if not done yet
     if config.dataset_mean is None and config.dataset_std is None:
         Logger.instance().warning("No mean and std set: computing and storing values.")
-        DefectViews.compute_mean_std(dataset, config)
+        GlassOpt.compute_mean_std(dataset, config)
         sys.exit(0)
 
     ## start program
     wandb.init(
-        project="standard_classification",
+        project=config.experiment_name,
         config={
             "learning_rate": 0.001,
             "architecture": config.fsl.model,
@@ -64,8 +64,8 @@ if __name__=="__main__":
         Logger.instance().critical(ve.args)
         sys.exit(-1)
     
-    # split dataset: train, (val), test
-    subsets_dict = DefectViews.split_dataset(dataset, config.dataset_splits)
+    # split dataset
+    subsets_dict = GlassOpt.split_dataset(dataset, config.dataset_splits)
     
     # train/test
     routine = RoutineBuilder.build_routine(config.fsl.model, model, dataset, subsets_dict)

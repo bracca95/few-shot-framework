@@ -115,6 +115,7 @@ class Fsl:
 
 @dataclass
 class Config:
+    experiment_name: str = "random_generated_name"
     dataset_path: str = _CG.DEFAULT_STR
     dataset_type: str = _CG.DEFAULT_STR
     dataset_splits: List[float] = field(default_factory=list)
@@ -141,6 +142,7 @@ class Config:
                 dataset_path = input("insert dataset path: ")
                 
         try:
+            experiment_name = from_str(obj.get(_CC.CONFIG_EXPERIMENT_NAME))
             dataset_type = from_str(obj.get(_CC.CONFIG_DATASET_TYPE))
             dataset_splits = from_list(lambda x: from_float(x), obj.get(_CC.CONFIG_DATASET_SPLITS))
             batch_size = from_int(obj.get(_CC.CONFIG_BATCH_SIZE))
@@ -174,12 +176,12 @@ class Config:
                 raise ValueError("the sum for dataset_splits must be 1")
         
         Logger.instance().info(f"Config deserialized: " +
-            f"dataset_path: {dataset_path}, dataset_type: {dataset_type}, dataset_splits: {dataset_splits}, " +
-            f"augment_online: {augment_online}, augment_offline: {augment_offline}, batch_size {batch_size}, epochs: {epochs}, " +
-            f"dataset mean: {dataset_mean}, dataset_std: {dataset_std}, crop_size: {crop_size}, image_size: {image_size}, " +
-            f"fsl: {fsl}")
+            f"experiment_name: {experiment_name}, dataset_path: {dataset_path}, dataset_type: {dataset_type}, " +
+            f"dataset_splits: {dataset_splits}, augment_online: {augment_online}, augment_offline: {augment_offline}, " +
+            f"batch_size {batch_size}, epochs: {epochs}, dataset mean: {dataset_mean}, dataset_std: {dataset_std}, " +
+            f"crop_size: {crop_size}, image_size: {image_size}, fsl: {fsl}")
         
-        return Config(dataset_path, dataset_type, dataset_splits, batch_size, epochs, crop_size, image_size, augment_online, augment_offline, dataset_mean, dataset_std, fsl)
+        return Config(experiment_name, dataset_path, dataset_type, dataset_splits, batch_size, epochs, crop_size, image_size, augment_online, augment_offline, dataset_mean, dataset_std, fsl)
 
     def serialize(self, directory: str, filename: str):
         result: dict = {}
@@ -192,6 +194,7 @@ class Config:
             sys.exit(-1)
         
         # if you do not want to write null values, add a field to result if and only if self.field is not None
+        result[_CC.CONFIG_EXPERIMENT_NAME] = from_str(self.experiment_name)
         result[_CC.CONFIG_DATASET_PATH] = from_str(self.dataset_path)
         result[_CC.CONFIG_DATASET_TYPE] = from_str(self.dataset_type)
         result[_CC.CONFIG_DATASET_SPLITS] = from_list(lambda x: from_float(x), self.dataset_splits)
