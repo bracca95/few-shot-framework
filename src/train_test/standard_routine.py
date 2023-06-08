@@ -171,9 +171,6 @@ class StandardRoutine(TrainTest):
 
         self.model.load_state_dict(torch.load(model_path))
         testloader = self.init_loader(config, self.test_str)
-
-        prcurve_labels = []
-        prcurve_predic = []
         
         self.model.eval()
         with torch.no_grad():
@@ -193,11 +190,21 @@ class StandardRoutine(TrainTest):
                 tot_samples += labels.size(0)
                 tot_correct += n_correct
 
-                wandb.log({"pr_curve": wandb.plot.pr_curve(labels.cpu().detach().numpy(), y_pred.cpu().detach().numpy())})
-
-                # precision-recall curve
-                prcurve_labels.extend(labels)
-                prcurve_predic.append(y_pred)
+                # wandb
+                wandb.log({
+                    "pr_curve": wandb.plot.pr_curve(
+                        labels.cpu().detach().numpy(),
+                        y_pred.cpu().detach().numpy(),
+                        labels=list(self.dataset.label_to_idx.keys())
+                        )
+                    })
+                wandb.log({
+                    "confusion": wandb.plot.confusion_matrix(
+                        y_true=labels.cpu().detach().numpy(),
+                        preds=y_pred.cpu().detach().numpy(),
+                        class_names=list(self.dataset.label_to_idx.keys())
+                        )
+                    })
 
             acc = tot_correct / tot_samples
             Logger.instance().debug(f"Test accuracy on {len(self.test_info.subset.indices)} images: {acc:.3f}")

@@ -11,7 +11,7 @@ from typing import List
 
 from src.models.FSL.ProtoNet.proto_batch_sampler import PrototypicalBatchSampler
 from src.models.FSL.ProtoNet.proto_loss import prototypical_loss as loss_fn
-from src.models.FSL.ProtoNet.proto_loss import proto_test
+from src.models.FSL.ProtoNet.proto_loss import TestResult
 from src.utils.tools import Tools, Logger
 from src.utils.config_parser import Config
 from src.datasets.staple_dataset import CustomDataset
@@ -164,17 +164,21 @@ class ProtoRoutine(TrainTest):
         
         legacy_avg_acc = list()
         acc_per_epoch = { i: torch.FloatTensor().to(_CG.DEVICE) for i in range(len(self.test_info.info_dict.keys())) }
+
+        tr_acc_max = 0.0
+        tr_max = TestResult()
         
         self.model.eval()
         with torch.no_grad():
             for epoch in tqdm(range(10)):
+                tr = TestResult()
                 score_per_class = { i: torch.FloatTensor().to(_CG.DEVICE) for i in range(len(self.test_info.info_dict.keys())) }
                 for x, y in testloader:
                     x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
                     y_pred = self.model(x)
 
                     # (overall accuracy [legacy], accuracy per class)
-                    legacy_acc, acc_vals = proto_test(y_pred, target=y, n_support=config.fsl.test_k_shot_s)
+                    legacy_acc, acc_vals = tr.proto_test(y_pred, target=y, n_support=config.fsl.test_k_shot_s)
                     legacy_avg_acc.append(legacy_acc.item())
                     for k, v in acc_vals.items():
                         score_per_class[k] = torch.cat((score_per_class[k], v.reshape(1,)))
@@ -185,8 +189,23 @@ class ProtoRoutine(TrainTest):
                 for k, v in avg_score_class.items():
                     acc_per_epoch[k] = torch.cat((acc_per_epoch[k], v.reshape(1,)))
 
-            avg_acc_epoch = { k: torch.mean(v) for k, v in acc_per_epoch.items() }
-            Logger.instance().debug(f"Accuracy on epochs: {avg_acc_epoch}")
-            
-            legacy_avg_acc = np.mean(legacy_avg_acc)
-            Logger.instance().debug(f"Legacy test accuracy: {legacy_avg_acc}")
+                tr.acc_overall = tr.acc_overall.mean()
+                if tr.acc_overall > tr_acc_max:
+                    tr_max = tr
+
+        avg_acc_epoch = { k: torch.mean(v) for k, v in acc_per_epoch.items() }
+        Logger.instance().debug(f"Accuracy on epochs: {avg_acc_epoch}")
+        
+        legacy_avg_acc = np.mean(legacy_avg_acc)
+        Logger.instance().debug(f"Legacy test accuracy: {legacy_avg_acc}")
+
+        if config.fsl.test_n_way == len(self.dataset.label_to_idx.keys()) and len(tr_max.target_inds) != 0 and len(tr_max.y_hat) != 0 is not None:
+            y_true = tr_max.target_inds
+            preds = tr_max.y_hat
+            wandb.log({
+                "confusion": wandb.plot.confusion_matrix(
+                    y_true=y_true.cpu().detach().numpy(),
+                    preds=preds.cpu().detach().numpy(),
+                    class_names=list(self.dataset.label_to_idx.keys())
+                    )
+                })

@@ -12,7 +12,7 @@ from src.utils.config_parser import Config
 from src.utils.tools import Logger
 from config.consts import General as _CG
 
-SEED = 123         # with the first protonet implementation I used 7
+SEED = 1234         # with the first protonet implementation I used 7
 
 random.seed(SEED)
 np.random.seed(SEED)
@@ -45,7 +45,9 @@ if __name__=="__main__":
         sys.exit(0)
 
     ## start program
+    wandb_mode = "disabled" if config.experiment_name == "disabled" else "online"
     wandb.init(
+        mode=wandb_mode,
         project=config.experiment_name,
         config={
             "learning_rate": 0.001,
