@@ -7,7 +7,7 @@ Your own dataset can be built by inheriting from the abstract class `CustomDatas
 ```
 "experiment_name": string,
 "dataset_path": string,
-"dataset_type": {`opt6`, `opt_bckg`, `binary`},
+"dataset_type": {`opt6`, `opt_bckg`, `binary`, `qplusv1`, `qplusv2`},
 "dataset_splits": List[float] (1 for train/test (e.g. [0.8]), 3 for train/val/test),
 "batch_size": int,
 "epochs": int,

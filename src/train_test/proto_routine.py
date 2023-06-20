@@ -30,8 +30,13 @@ class ProtoRoutine(TrainTest):
 
     def init_loader(self, config: Config, split_set: str):
         current_subset = self.get_subset_info(split_set)
+        
         if current_subset.subset is None:
             return None
+        
+        min_req = config.fsl.test_k_shot_q + config.fsl.train_k_shot_s
+        if any(map(lambda x: x < min_req, current_subset.info_dict.values())):
+            raise ValueError(f"at least one class has not enough elements {(min_req)}. Check {current_subset.info_dict}")
         
         label_list = [self.dataset[idx][1] for idx in current_subset.subset.indices]
         sampler = PrototypicalBatchSampler(
@@ -133,15 +138,17 @@ class ProtoRoutine(TrainTest):
 
     def validate(self, config: Config, valloader: DataLoader, val_loss: List[float], val_acc: List[float]):
         Logger.instance().debug("Validating!")
+        
         self.model.eval()
-        for x, y in valloader:
-            x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
-            model_output = self.model(x)
-            loss, acc = loss_fn(model_output, target=y, n_support=config.fsl.test_k_shot_s)
-            val_loss.append(loss.item())
-            val_acc.append(acc.item())
-        avg_loss_eval = np.mean(val_loss[-config.fsl.episodes:])
-        avg_acc_eval = np.mean(val_acc[-config.fsl.episodes:])
+        with torch.no_grad():
+            for x, y in valloader:
+                x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
+                model_output = self.model(x)
+                loss, acc = loss_fn(model_output, target=y, n_support=config.fsl.test_k_shot_s)
+                val_loss.append(loss.item())
+                val_acc.append(acc.item())
+            avg_loss_eval = np.mean(val_loss[-config.fsl.episodes:])
+            avg_acc_eval = np.mean(val_acc[-config.fsl.episodes:])
 
         Logger.instance().debug(f"Avg Val Loss: {avg_loss_eval}, Avg Val Acc: {avg_acc_eval}")
 
@@ -155,12 +162,15 @@ class ProtoRoutine(TrainTest):
         
         try:
             model_path = Tools.validate_path(model_path)
+            testloader = self.init_loader(config, self.test_str)
         except FileNotFoundError as fnf:
             Logger.instance().critical(f"model not found: {fnf.args}")
             sys.exit(-1)
+        except ValueError as ve:
+            Logger.instance().error(f"{ve.args}. No test performed")
+            return
 
         self.model.load_state_dict(torch.load(model_path))
-        testloader = self.init_loader(config, self.test_str)
         
         legacy_avg_acc = list()
         acc_per_epoch = { i: torch.FloatTensor().to(_CG.DEVICE) for i in range(len(self.test_info.info_dict.keys())) }
@@ -199,7 +209,7 @@ class ProtoRoutine(TrainTest):
         legacy_avg_acc = np.mean(legacy_avg_acc)
         Logger.instance().debug(f"Legacy test accuracy: {legacy_avg_acc}")
 
-        if config.fsl.test_n_way == len(self.dataset.label_to_idx.keys()) and len(tr_max.target_inds) != 0 and len(tr_max.y_hat) != 0 is not None:
+        if config.fsl.test_n_way == len(self.dataset.label_to_idx.keys()) and len(tr_max.target_inds) != 0 and len(tr_max.y_hat) != 0:
             y_true = tr_max.target_inds
             preds = tr_max.y_hat
             wandb.log({

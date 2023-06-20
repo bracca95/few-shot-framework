@@ -1,16 +1,16 @@
 {
-    "experiment_name": "background",
+    "experiment_name": "mixed",
     "dataset_path": "/media/lorenzo/M/datasets/dataset_opt/2.3_dataset_opt/views7c/img",
     "dataset_type": "opt_bckg",
     "dataset_splits": [
-        0.6,
-        0.2,
-        0.2
+        0.0,
+        0.0,
+        1.0
     ],
     "batch_size": 32,
     "epochs": 100,
     "crop_size": 28,
-    "image_size": 28,
+    "image_size": 105,
     "augment_online": null,
     "augment_offline": [
         "break",
@@ -23,7 +23,7 @@
         0.07766749709844589
     ],
     "fsl": {
-        "model": "cnn",
+        "model": "default",
         "episodes": 100,
         "train_n_way": 7,
         "train_k_shot_s": 5,
