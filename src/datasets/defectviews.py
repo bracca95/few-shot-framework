@@ -69,7 +69,7 @@ class GlassOpt(CustomDataset):
         image_list = glob(os.path.join(self.dataset_path, "*.png"))
         image_list = image_list + extra_image_list
         
-        image_list = list(filter(lambda x: Tools.check_string(self.split_name(x), filt, True, False), image_list))
+        image_list = list(filter(lambda x: Tools.check_string(self.split_name(x), filt, True, True), image_list))
         
         if not all(map(lambda x: x.endswith(".png"), image_list)) or image_list == []:
             raise ValueError("incorrect image list. Check the provided path for your dataset.")
@@ -225,10 +225,11 @@ class QPlusV2(GlassOpt):
         "dust": 7,
         "coating": 8,
         "scratch_heavy": 9,
-        "dirt_halo": 10,
-        "bubble": 11,
-        "bubble_hole": 12
+        "bubble": 10,
+        "bubble_hole": 11
     }
+
+    # "dirt_halo": 12,
 
     idx_to_label = Tools.invert_dict(label_to_idx)
     NO_CROP = list(label_to_idx.keys())
@@ -246,6 +247,10 @@ class BubblePoint(GlassOpt):
     }
 
     idx_to_label = Tools.invert_dict(label_to_idx)
+
+    # edit
+    NO_CROP = list(label_to_idx.keys())
+    split_name = staticmethod(lambda x: os.path.basename(x).rsplit("_", -1)[0])
 
     def __init__(self, dataset_path: str, aug_off: Optional[List[str]], aug_on: Optional[List[str]], crop_size: int, img_size: int):
         super().__init__(dataset_path, aug_off=None, aug_on=aug_on, crop_size=crop_size, img_size=img_size)

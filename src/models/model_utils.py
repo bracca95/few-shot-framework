@@ -25,11 +25,11 @@ class ModelBuilder:
             return CNN()
         elif config.fsl.model.lower() == "cnn105":
             return CNN105()
-        elif config.fsl.model.lower() in ("resnet50", "hrnet_w18"):
+        elif config.fsl.model.lower() in ("resnet50", "hrnet_w18", "vit_tiny_patch16_224"):
             return TimmFeatureExtractor(config.fsl.model.lower(), in_chans=1, pooled=True, mean=config.dataset_mean, std=config.dataset_std)
         elif config.fsl.model.lower() == "cnncompare":
             return CNNCompare(out_classes)
         elif config.fsl.model.lower() == "cnn105compare":
             return CNN105Compare(out_classes)
         else:
-            raise ValueError(f"fsl.model must be { {'default', 'mlp', 'cnn', 'cnn105', 'resnet50', 'hrnet_w18', 'cnncompare', 'cnn105compare'} }. You wrote: {config.fsl.model}")
+            raise ValueError(f"fsl.model must be { {'default', 'mlp', 'cnn', 'cnn105', 'resnet50', 'hrnet_w18', 'vit_tiny_patch16_224', 'cnncompare', 'cnn105compare'} }. You wrote: {config.fsl.model}")
