@@ -8,11 +8,6 @@ from src.models.pretrained.extractors import TimmFeatureExtractor
 from src.utils.config_parser import Config
 
 
-class Model(nn.Module):
-
-    def __init__(self):
-        super().__init__()
-
 class ModelBuilder:
 
     @staticmethod

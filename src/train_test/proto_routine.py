@@ -5,10 +5,10 @@ import wandb
 import numpy as np
 
 from tqdm import tqdm
-from torch import nn
 from torch.utils.data import DataLoader
 from typing import List
 
+from src.models.model import Model
 from src.models.FSL.ProtoNet.proto_batch_sampler import PrototypicalBatchSampler
 from src.models.FSL.ProtoNet.proto_loss import prototypical_loss as loss_fn
 from src.models.FSL.ProtoNet.proto_loss import TestResult
@@ -22,7 +22,7 @@ from config.consts import SubsetsDict
 
 class ProtoRoutine(TrainTest):
 
-    def __init__(self, model: nn.Module, dataset: CustomDataset, subsets_dict: SubsetsDict):
+    def __init__(self, model: Model, dataset: CustomDataset, subsets_dict: SubsetsDict):
         super().__init__(model, dataset, subsets_dict)
         self.learning_rate = 0.001
         self.lr_scheduler_gamma = 0.5
@@ -66,7 +66,7 @@ class ProtoRoutine(TrainTest):
         train_acc = []
         val_loss = []
         val_acc = []
-        best_acc = 0
+        best_acc: float = 0.0
         best_loss = float("inf")
 
         # create output folder to store data
@@ -126,7 +126,7 @@ class ProtoRoutine(TrainTest):
             wandb.log(wdb_dict)
 
             # stop conditions and save last model
-            if eidx == config.epochs-1 or best_acc >= 1.0-_CG.EPS_ACC or best_loss <= 0.0+_CG.EPS_LSS:
+            if eidx == config.epochs-1 or self.check_stop_conditions(best_acc):
                 pth_path = last_val_model_path if valloader is not None else last_model_path
                 Logger.instance().debug(f"STOP: saving last epoch model named `{os.path.basename(pth_path)}`")
                 torch.save(self.model.state_dict(), pth_path)
@@ -144,7 +144,7 @@ class ProtoRoutine(TrainTest):
             for x, y in valloader:
                 x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
                 model_output = self.model(x)
-                loss, acc = loss_fn(model_output, target=y, n_support=config.fsl.test_k_shot_s)
+                loss, acc = loss_fn(model_output, target=y, n_support=config.fsl.train_k_shot_s)
                 val_loss.append(loss.item())
                 val_acc.append(acc.item())
             avg_loss_eval = np.mean(val_loss[-config.fsl.episodes:])
@@ -194,7 +194,8 @@ class ProtoRoutine(TrainTest):
                         score_per_class[k] = torch.cat((score_per_class[k], v.reshape(1,)))
                 
                 avg_score_class = { k: torch.mean(v) for k, v in score_per_class.items() }
-                Logger.instance().debug(f"at epoch {epoch}, average test accuracy: {avg_score_class}")
+                avg_score_class_print = { k: v.item() for (k, v) in zip(self.test_info.info_dict.keys(), avg_score_class.values()) }
+                Logger.instance().debug(f"at epoch {epoch}, average test accuracy: {avg_score_class_print}")
 
                 for k, v in avg_score_class.items():
                     acc_per_epoch[k] = torch.cat((acc_per_epoch[k], v.reshape(1,)))
@@ -204,7 +205,8 @@ class ProtoRoutine(TrainTest):
                     tr_max = tr
 
         avg_acc_epoch = { k: torch.mean(v) for k, v in acc_per_epoch.items() }
-        Logger.instance().debug(f"Accuracy on epochs: {avg_acc_epoch}")
+        avg_acc_epoch_print = { k: v.item() for (k, v) in zip(self.test_info.info_dict.keys(), avg_acc_epoch.values()) }
+        Logger.instance().debug(f"Accuracy on epochs: {avg_acc_epoch_print}")
         
         legacy_avg_acc = np.mean(legacy_avg_acc)
         Logger.instance().debug(f"Legacy test accuracy: {legacy_avg_acc}")
