@@ -1,0 +1,3 @@
+[submodule "lib/glass_defect_dataset"]
+	path = lib/glass_defect_dataset
+	url = git@github.com:bracca95/glass_defect_dataset.git
