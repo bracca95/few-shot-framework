@@ -9,18 +9,17 @@ from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
 
 from src.models.model import Model
+from src.train_test.routine import TrainTest
+from src.utils.config_parser import TrainTest as TrainTestConfig
 from lib.glass_defect_dataset.src.datasets.dataset import CustomDataset
 from lib.glass_defect_dataset.config.consts import General as _CG
-from lib.glass_defect_dataset.config.consts import SubsetsDict
-from src.train_test.routine import TrainTest
-from src.utils.config_parser import Config
 from src.utils.tools import Logger, Tools
 
 
 class StandardRoutine(TrainTest):
 
-    def __init__(self, model: Model, dataset: CustomDataset):
-        super().__init__(model, dataset)
+    def __init__(self, train_test_config: TrainTestConfig, model: Model, dataset: CustomDataset):
+        super().__init__(train_test_config, model, dataset)
 
         self.criterion = nn.CrossEntropyLoss()
         self.criterion.to(_CG.DEVICE)
@@ -31,27 +30,25 @@ class StandardRoutine(TrainTest):
         correct = top_pred.eq(y.view_as(top_pred)).sum()    # count the number of correct predictions
         return correct.float() / y.shape[0]                 # compute percentage of correct predictions (accuracy score)
     
-    def init_loader(self, config: Config, split_set: str):
-        current_subset = self.get_subset_info(split_set)
+    def init_loader(self, split_set: str):
+        current_subset = self.dataset.get_subset_info(split_set)
         if current_subset.subset is None:
             return None
         
-        return DataLoader(current_subset.subset, batch_size=config.batch_size)
+        return DataLoader(current_subset.subset, batch_size=self.train_test_config.batch_size)
 
-    def train(self, config: Config):
+    def train(self):
         Logger.instance().debug("Start training")
-        if config.fsl is None:
-            raise ValueError(f"missing field `fsl` in config.json")
-
-        trainloader = self.init_loader(config, self.train_str)
-        valloader = self.init_loader(config, self.val_str)
+        
+        trainloader = self.init_loader(self.train_str)
+        valloader = self.init_loader(self.val_str)
         
         optim = torch.optim.Adam(params=self.model.parameters(), lr=0.001)
         
-        # wandb
-        example_data, examples_target = next(iter(trainloader))
-        img_grid = make_grid(example_data)
-        wandb.log({"examples": wandb.Image(img_grid, caption="Top: Output, Bottom: Input")})
+        # # wandb
+        # example_data, examples_target = next(iter(trainloader))
+        # img_grid = make_grid(example_data)
+        # wandb.log({"examples": wandb.Image(img_grid, caption="Top: Output, Bottom: Input")})
 
         # create output folder to store data
         out_folder = os.path.join(os.getcwd(), "output")
@@ -66,7 +63,7 @@ class StandardRoutine(TrainTest):
         best_loss = float('inf')
         best_acc = 0
 
-        for eidx, epoch in enumerate(range(config.epochs)):
+        for eidx, epoch in enumerate(range(self.train_test_config.epochs)):
             self.model.train()
             epoch_loss = 0
             epoch_acc = 0
@@ -104,7 +101,7 @@ class StandardRoutine(TrainTest):
 
             ## VALIDATION
             if valloader is not None:
-                epoch_loss_eval, epoch_acc_eval = self.validate(config, valloader)
+                epoch_loss_eval, epoch_acc_eval = self.validate(valloader)
                 if epoch_acc_eval >= best_acc:
                     Logger.instance().debug(f"Found the best evaluation model at epoch {epoch}!")
                     torch.save(self.model.state_dict(), val_model_path)
@@ -118,7 +115,7 @@ class StandardRoutine(TrainTest):
             wandb.log(wdb_dict)
 
             # stop conditions and save last model
-            if eidx == config.epochs-1 or best_acc >= 1.0-_CG.EPS_ACC or best_loss <= 0.0+_CG.EPS_LSS:
+            if eidx == self.train_test_config.epochs-1 or self.check_stop_conditions(best_acc):
                 pth_path = last_val_model_path if valloader is not None else last_model_path
                 Logger.instance().debug(f"STOP: saving last epoch model named `{os.path.basename(pth_path)}`")
                 torch.save(self.model.state_dict(), pth_path)
@@ -128,15 +125,15 @@ class StandardRoutine(TrainTest):
 
                 return
 
-    def validate(self, config: Config, valloader: DataLoader):
+    def validate(self, valloader: DataLoader):
         Logger.instance().debug("Validating!")
-        self.model.eval()
         
         tot_samples = 0
         tot_correct = 0
 
         loss = 0
         
+        self.model.eval()
         for images, labels in valloader:
             images = images.to(_CG.DEVICE)
             labels = labels.to(_CG.DEVICE)
@@ -158,10 +155,10 @@ class StandardRoutine(TrainTest):
 
         return loss, acc
     
-    def test(self, config: Config, model_path: str):
+    def test(self, model_path: str):
         Logger.instance().debug("Start testing")
         
-        if config.fsl is None:
+        if self._model_config.fsl is None:
             raise ValueError(f"missing field `fsl` in config.json")
         
         try:
@@ -171,7 +168,7 @@ class StandardRoutine(TrainTest):
             sys.exit(-1)
 
         self.model.load_state_dict(torch.load(model_path))
-        testloader = self.init_loader(config, self.test_str)
+        testloader = self.init_loader(self.test_str)
         
         self.model.eval()
         with torch.no_grad():

@@ -1,8 +1,9 @@
 import torch.nn as nn
 
 from src.models.model import Model
+from src.utils.config_parser import Config
 
-def conv_block(in_channels, out_channels):
+def conv_block(in_channels: int, out_channels: int):
     '''
     returns a block conv-bn-relu-pool
     '''
@@ -19,7 +20,7 @@ class ProtoNet(Model):
     Model as described in the reference paper,
     source: https://github.com/jakesnell/prototypical-networks/blob/f0c48808e496989d01db59f86d4449d7aee9ab0c/protonets/models/few_shot.py#L62-L84
     '''
-    def __init__(self, config, x_dim=1, hid_dim=64, z_dim=64):
+    def __init__(self, config: Config, x_dim: int=1, hid_dim: int=64, z_dim: int=64):
         super().__init__(config)
         self.encoder = nn.Sequential(
             conv_block(x_dim, hid_dim),

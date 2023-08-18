@@ -5,17 +5,18 @@ from typing import Optional, Deque
 from collections import deque
 
 from src.utils.tools import Logger
-from src.utils.config_parser import Config
+from src.utils.config_parser import TrainTest as TrainTestConfig
 from src.models.model import Model
 from lib.glass_defect_dataset.src.datasets.dataset import CustomDataset, SubsetInfo
-from lib.glass_defect_dataset.config.consts import SubsetsDict, General as _CG
+from lib.glass_defect_dataset.config.consts import General as _CG
 
 
 class TrainTest(ABC):
 
     train_str, val_str, test_str = _CG.DEFAULT_SUBSETS
     
-    def __init__(self, model: Model, dataset: CustomDataset):
+    def __init__(self, train_test_config: TrainTestConfig, model: Model, dataset: CustomDataset):
+        self.train_test_config = train_test_config
         self.model = model
         self.dataset = dataset
 
@@ -23,14 +24,15 @@ class TrainTest(ABC):
         self.val_info: Optional[SubsetInfo] = self.dataset.get_subset_info(self.val_str)
         self.test_info: Optional[SubsetInfo] = self.dataset.get_subset_info(self.test_str)
 
+        self._model_config = self.model.config.model
         self.acc_var: Deque[float] = deque(maxlen=10)
 
     @abstractmethod
-    def train(self, config: Config):
+    def train(self):
         ...
 
     @abstractmethod
-    def test(self, config: Config, model_path: str):
+    def test(self, model_path: str):
         ...
 
     def check_stop_conditions(self, curr_acc: float, limit: float = 0.985, eps: float = 0.001) -> bool:
@@ -54,11 +56,11 @@ class TrainTest(ABC):
 
 class TrainTestExample(TrainTest):
 
-    def __init__(self, model: Model, dataset: CustomDataset):
-        super().__init__(model, dataset)
+    def __init__(self, train_test_config: TrainTestConfig, model: Model, dataset: CustomDataset):
+        super().__init__(train_test_config, model, dataset)
 
-    def train(self, config: Config):
+    def train(self):
         Logger.instance().debug("train example")
 
-    def test(self, config: Config, model_path: str):
+    def test(self, model_path: str):
         Logger.instance().debug("test example")

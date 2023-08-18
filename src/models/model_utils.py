@@ -1,5 +1,3 @@
-from torch import nn
-
 from src.models.model import Model
 from src.models.MLP.mlp_basic import MLP
 from src.models.CNN.cnn_basic import CNN

@@ -1,9 +1,10 @@
 from torch import nn
 from src.models.model import Model
+from src.utils.config_parser import Config
 
 
 class MLP(Model):
-    def __init__(self, config, in_dim: int, out_dim: int = 6):
+    def __init__(self, config: Config, in_dim: int, out_dim: int = 6):
         super().__init__(config)
         
         ratio = in_dim // 4

@@ -4,7 +4,7 @@ from typing import Optional, Union, Tuple
 
 from src.utils.tools import Logger
 from src.utils.config_parser import Config
-
+from lib.glass_defect_dataset.src.datasets.dataset import CustomDataset
 
 class Model(nn.Module):
 
@@ -31,11 +31,7 @@ class Model(nn.Module):
             batch size (int)
         """
 
-        if config.model.fsl is None:
-            Logger.instance().debug(f"batch size is {config.train_test.batch_size}")
-            return config.train_test.batch_size
-        
-        if "compare" in config.model.model_name.lower():
+        if config.model.fsl is None or "compare" in config.model.model_name.lower():
             Logger.instance().debug(f"batch size is {config.train_test.batch_size}")
             return config.train_test.batch_size
         

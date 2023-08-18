@@ -8,6 +8,7 @@ import numpy as np
 from src.models.model_utils import ModelBuilder
 from src.train_test.routine_utils import RoutineBuilder
 from lib.glass_defect_dataset.src.datasets.dataset_utils import DatasetBuilder
+from src.utils.config_parser import Model as ModelConfig
 from src.utils.config_parser import Config, read_from_json, write_to_json
 from src.utils.tools import Logger
 from lib.glass_defect_dataset.config.consts import General as _CG
@@ -69,14 +70,14 @@ if __name__=="__main__":
         sys.exit(-1)
     
     # train/test
-    routine = RoutineBuilder.build_routine(config.model.model_name, model, dataset, debug=True)
+    routine = RoutineBuilder.build_routine(config.train_test, model, dataset)
     
     if config.train_test.model_test_path is None:
-        routine.train(config)
+        routine.train()
         model_path = os.path.join(os.getcwd(), "output/best_model.pth")
     
     model_path = config.train_test.model_test_path if config.train_test.model_test_path is not None else model_path
-    routine.test(config, model_path)
+    routine.test(model_path)
 
     wandb.save("log.log")
     wandb.finish()

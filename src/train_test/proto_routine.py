@@ -12,48 +12,54 @@ from src.models.model import Model
 from src.models.FSL.ProtoNet.proto_batch_sampler import PrototypicalBatchSampler
 from src.models.FSL.ProtoNet.proto_loss import prototypical_loss as loss_fn
 from src.models.FSL.ProtoNet.proto_loss import TestResult
-from src.utils.tools import Tools, Logger
-from src.utils.config_parser import Config
-from lib.glass_defect_dataset.src.datasets.dataset import CustomDataset
 from src.train_test.routine import TrainTest
+from src.utils.tools import Tools, Logger
+from src.utils.config_parser import TrainTest as TrainTestConfig
+from lib.glass_defect_dataset.src.datasets.dataset import CustomDataset
 from lib.glass_defect_dataset.config.consts import General as _CG
-from lib.glass_defect_dataset.config.consts import SubsetsDict
 
 
 class ProtoRoutine(TrainTest):
 
-    def __init__(self, model: Model, dataset: CustomDataset):
-        super().__init__(model, dataset)
+    def __init__(self, train_test_config: TrainTestConfig, model: Model, dataset: CustomDataset):
+        super().__init__(train_test_config, model, dataset)
         self.learning_rate = 0.001
         self.lr_scheduler_gamma = 0.5
         self.lr_scheduler_step = 20
 
-    def init_loader(self, config: Config, split_set: str):
+        # python's linter does not take into account this check, but the rest is correct
+        if self._model_config.fsl is None:
+            raise ValueError("fsl field cannot be null in config")
+
+    def init_loader(self, split_set: str):
         current_subset = self.dataset.get_subset_info(split_set)
         
         if current_subset.subset is None:
             return None
         
-        min_req = config.fsl.test_k_shot_q + config.fsl.train_k_shot_s
+        min_req = self._model_config.fsl.test_k_shot_q + self._model_config.fsl.train_k_shot_s
         if any(map(lambda x: x < min_req, current_subset.info_dict.values())):
             raise ValueError(f"at least one class has not enough elements {(min_req)}. Check {current_subset.info_dict}")
         
         label_list = [self.dataset[idx][1] for idx in current_subset.subset.indices]
+        if split_set == self.train_str:
+            num_samples = self._model_config.fsl.train_k_shot_s + self._model_config.fsl.train_k_shot_q
+        else:
+            num_samples = self._model_config.fsl.test_k_shot_s + self._model_config.fsl.test_k_shot_q
+        
         sampler = PrototypicalBatchSampler(
             label_list,
-            config.fsl.train_n_way if split_set == self.train_str else config.fsl.test_n_way,
-            config.fsl.train_k_shot_s + config.fsl.train_k_shot_q if split_set == self.train_str else config.fsl.test_k_shot_s + config.fsl.test_k_shot_q,
-            config.fsl.episodes
+            self._model_config.fsl.train_n_way if split_set == self.train_str else self._model_config.fsl.test_n_way,
+            num_samples,
+            self._model_config.fsl.episodes
         )
         return DataLoader(current_subset.subset, batch_sampler=sampler)
 
-    def train(self, config: Config):
+    def train(self):
         Logger.instance().debug("Start training")
-        if config.fsl is None:
-            raise ValueError(f"missing field `fsl` in config.json")
 
-        trainloader = self.init_loader(config, self.train_str)
-        valloader = self.init_loader(config, self.val_str)
+        trainloader = self.init_loader(self.train_str)
+        valloader = self.init_loader(self.val_str)
         
         optim = torch.optim.Adam(params=self.model.parameters(), lr=self.learning_rate)
         lr_scheduler = torch.optim.lr_scheduler.StepLR(
@@ -79,21 +85,21 @@ class ProtoRoutine(TrainTest):
         last_model_path = os.path.join(out_folder, "last_model.pth")
         last_val_model_path = os.path.join(out_folder, "last_val_model.pth")
 
-        for eidx, epoch in enumerate(range(config.epochs)):
+        for eidx, epoch in enumerate(range(self.train_test_config.epochs)):
             Logger.instance().debug(f"=== Epoch: {epoch} ===")
             self.model.train()
             for x, y in tqdm(trainloader):
                 optim.zero_grad()
                 x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
                 model_output = self.model(x)
-                loss, acc = loss_fn(model_output, target=y, n_support=config.fsl.train_k_shot_s)
+                loss, acc = loss_fn(model_output, target=y, n_support=self._model_config.fsl.train_k_shot_s)
                 loss.backward()
                 optim.step()
                 train_loss.append(loss.item())
                 train_acc.append(acc.item())
             
-            avg_loss = np.mean(train_loss[-config.fsl.episodes:])
-            avg_acc = np.mean(train_acc[-config.fsl.episodes:])
+            avg_loss = np.mean(train_loss[-self._model_config.fsl.episodes:])
+            avg_acc = np.mean(train_acc[-self._model_config.fsl.episodes:])
             lr_scheduler.step()
             
             Logger.instance().debug(f"Avg Train Loss: {avg_loss}, Avg Train Acc: {avg_acc}")
@@ -112,7 +118,7 @@ class ProtoRoutine(TrainTest):
 
             ## VALIDATION
             if valloader is not None:
-                avg_loss_eval, avg_acc_eval = self.validate(config, valloader, val_loss, val_acc)
+                avg_loss_eval, avg_acc_eval = self.validate(valloader, val_loss, val_acc)
                 if avg_acc_eval >= best_acc:
                     Logger.instance().debug(f"Found the best evaluation model at epoch {epoch}!")
                     torch.save(self.model.state_dict(), val_model_path)
@@ -126,7 +132,7 @@ class ProtoRoutine(TrainTest):
             wandb.log(wdb_dict)
 
             # stop conditions and save last model
-            if eidx == config.epochs-1 or self.check_stop_conditions(best_acc):
+            if eidx == self.train_test_config.epochs-1 or self.check_stop_conditions(best_acc):
                 pth_path = last_val_model_path if valloader is not None else last_model_path
                 Logger.instance().debug(f"STOP: saving last epoch model named `{os.path.basename(pth_path)}`")
                 torch.save(self.model.state_dict(), pth_path)
@@ -136,7 +142,7 @@ class ProtoRoutine(TrainTest):
 
                 return
 
-    def validate(self, config: Config, valloader: DataLoader, val_loss: List[float], val_acc: List[float]):
+    def validate(self, valloader: DataLoader, val_loss: List[float], val_acc: List[float]):
         Logger.instance().debug("Validating!")
         
         self.model.eval()
@@ -144,25 +150,25 @@ class ProtoRoutine(TrainTest):
             for x, y in valloader:
                 x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
                 model_output = self.model(x)
-                loss, acc = loss_fn(model_output, target=y, n_support=config.fsl.train_k_shot_s)
+                loss, acc = loss_fn(model_output, target=y, n_support=self._model_config.fsl.train_k_shot_s)
                 val_loss.append(loss.item())
                 val_acc.append(acc.item())
-            avg_loss_eval = np.mean(val_loss[-config.fsl.episodes:])
-            avg_acc_eval = np.mean(val_acc[-config.fsl.episodes:])
+            avg_loss_eval = np.mean(val_loss[-self._model_config.fsl.episodes:])
+            avg_acc_eval = np.mean(val_acc[-self._model_config.fsl.episodes:])
 
         Logger.instance().debug(f"Avg Val Loss: {avg_loss_eval}, Avg Val Acc: {avg_acc_eval}")
 
         return avg_loss_eval, avg_acc_eval
 
-    def test(self, config: Config, model_path: str):
+    def test(self, model_path: str):
         Logger.instance().debug("Start testing")
         
-        if config.fsl is None:
+        if self._model_config.fsl is None:
             raise ValueError(f"missing field `fsl` in config.json")
         
         try:
             model_path = Tools.validate_path(model_path)
-            testloader = self.init_loader(config, self.test_str)
+            testloader = self.init_loader(self.test_str)
         except FileNotFoundError as fnf:
             Logger.instance().critical(f"model not found: {fnf.args}")
             sys.exit(-1)
@@ -188,7 +194,7 @@ class ProtoRoutine(TrainTest):
                     y_pred = self.model(x)
 
                     # (overall accuracy [legacy], accuracy per class)
-                    legacy_acc, acc_vals = tr.proto_test(y_pred, target=y, n_support=config.fsl.test_k_shot_s)
+                    legacy_acc, acc_vals = tr.proto_test(y_pred, target=y, n_support=self._model_config.fsl.test_k_shot_s)
                     legacy_avg_acc.append(legacy_acc.item())
                     for k, v in acc_vals.items():
                         score_per_class[k] = torch.cat((score_per_class[k], v.reshape(1,)))
@@ -211,7 +217,7 @@ class ProtoRoutine(TrainTest):
         legacy_avg_acc = np.mean(legacy_avg_acc)
         Logger.instance().debug(f"Legacy test accuracy: {legacy_avg_acc}")
 
-        if config.fsl.test_n_way == len(self.dataset.label_to_idx.keys()) and len(tr_max.target_inds) != 0 and len(tr_max.y_hat) != 0:
+        if self._model_config.fsl.test_n_way == len(self.dataset.label_to_idx.keys()) and len(tr_max.target_inds) != 0 and len(tr_max.y_hat) != 0:
             y_true = tr_max.target_inds
             preds = tr_max.y_hat
             wandb.log({

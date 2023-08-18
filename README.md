@@ -4,34 +4,44 @@
 Your own dataset can be built by inheriting from the abstract class `CustomDataset` in `src.dataset.dataset`
 
 ## Config
+### General
 ```
-"experiment_name": string,
-"dataset_path": string,
+"experiment_name": str. Required for wandb; set to "disabled" to disable it.
+```
+
+### Dataset
+```
+"dataset_path": str. Path to the dataset,
 "dataset_type": {`opt6`, `opt_bckg`, `binary`, `qplusv1`, `qplusv2`},
 "dataset_splits": List[float] (1 for train/test (e.g. [0.8]), 3 for train/val/test),
-"batch_size": int,
-"epochs": int,
-"crop_size": int (suggested 28),
-"image_size": int (after crop, reshape can be applied),
+"crop_size": int,
+"image_size": int. Reshape to image_size,
 "augment_online": List[str] (classes that undergo online augmentation),
 "augment_offline": List[str] (classes that undergo offline augmentation),
 "dataset_mean": List[float] (Grayscale/RGB),
 "dataset_std": List[float] (Grayscale/RGB)
 ```
 
-If ProtoNet is required, add a new fields "fsl":
+### Model
 ```
-"fsl": {
-  "model": str {"default", "mlp", "cnn", "cnn105", "resnet50", "hrnet_w18", "vit_tiny_patch16_224", "cnncompare", "cnn105compare"},
-  "episodes": int (suggested 100),
+"model": { "default", "mlp", "cnn", "cnn105", "resnet50", "hrnet_w18", "vit_tiny_patch16_224" } and compare version,
+"fsl": Optional if ProtoNet is required (the model must not contain 'compare' in its name)
+  "episodes": int,
   "train_n_way": int,
   "train_k_shot_s": int
   "train_k_shot_q": int,
   "test_n_way": int,
   "test_k_shot_s": int,
   "test_k_shot_q": int,
-  "model_test_path": Optional[str] (if defined, it runs the test only)
-}
+```
+
+### Train/Test
+```
+"epochs": int,
+"batch_size": int,
+"model_test_path": Optional[str]. Define only if you have a saved model and do not want to train again.
+"learning_rate": Optional[str],
+"optimizer": Optional[str]
 ```
 
 ## Docker
