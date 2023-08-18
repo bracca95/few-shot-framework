@@ -12,6 +12,8 @@ class Model(nn.Module):
         super().__init__()
         self.config = config
 
+        Logger.instance().info(f"Model instantiated: {self.__class__.__name__}")
+
     def forward(self, x):
         pass
 
@@ -29,16 +31,17 @@ class Model(nn.Module):
             batch size (int)
         """
 
-        if config.fsl is None:
-            Logger.instance().debug(f"batch size is {config.batch_size}")
-            return config.batch_size
+        if config.model.fsl is None:
+            Logger.instance().debug(f"batch size is {config.train_test.batch_size}")
+            return config.train_test.batch_size
         
-        if "compare" in config.fsl.model.lower():
-            Logger.instance().debug(f"batch size is {config.batch_size}")
-            return config.batch_size
+        if "compare" in config.model.model_name.lower():
+            Logger.instance().debug(f"batch size is {config.train_test.batch_size}")
+            return config.train_test.batch_size
         
         Logger.instance().debug(f"using protonet-like network to compute batch size")
-        return config.fsl.train_n_way * config.fsl.train_k_shot_s + config.fsl.test_n_way * config.fsl.test_k_shot_q
+        return config.model.fsl.train_n_way * config.model.fsl.train_k_shot_s + \
+            config.model.fsl.test_n_way * config.model.fsl.test_k_shot_q
 
     def get_out_size(self, pos: Optional[int]) -> Union[torch.Size, int]:
         """Get the output size of a model
@@ -54,8 +57,8 @@ class Model(nn.Module):
         """
         
         batch_size = Model.get_batch_size(self.config)
-        n_channels = len(self.config.dataset_mean) if self.config.dataset_mean is not None else 1
-        x = torch.randn(batch_size, n_channels, self.config.image_size, self.config.image_size)
+        n_channels = len(self.config.dataset.dataset_mean) if self.config.dataset.dataset_mean is not None else 1
+        x = torch.randn(batch_size, n_channels, self.config.dataset.image_size, self.config.dataset.image_size)
         
         with torch.no_grad():
             output = self.forward(x)

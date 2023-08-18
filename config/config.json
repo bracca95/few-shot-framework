@@ -15,8 +15,12 @@
             "break",
             "mark"
         ],
-        "dataset_mean": null,
-        "dataset_std": null
+        "dataset_mean": [
+            0.5374614596366882
+        ],
+        "dataset_std": [
+            0.08300898969173431
+        ]
     },
     "model": {
         "model_name": "default",

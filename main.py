@@ -47,17 +47,16 @@ if __name__=="__main__":
         write_to_json(config, os.getcwd(), "config/config.json")
         sys.exit(0)
 
-    #### DEBUG - tested up to here ####
     ## start program
     wandb_mode = "disabled" if config.experiment_name == "disabled" else "online"
     wandb.init(
         mode=wandb_mode,
         project=config.experiment_name,
         config={
-            "learning_rate": 0.001,
-            "architecture": config.fsl.model,
-            "dataset": config.dataset_type,
-            "epochs": config.epochs,
+            "learning_rate": config.train_test.learning_rate,
+            "architecture": config.model.model_name,
+            "dataset": config.dataset.dataset_type,
+            "epochs": config.train_test.epochs,
         }
     )
 
@@ -69,17 +68,14 @@ if __name__=="__main__":
         Logger.instance().critical(ve.args)
         sys.exit(-1)
     
-    # split dataset
-    subsets_dict = DatasetBuilder.split_dataset(dataset, config.dataset_splits)
-    
     # train/test
-    routine = RoutineBuilder.build_routine(config.fsl.model, model, dataset, subsets_dict)
+    routine = RoutineBuilder.build_routine(config.model.model_name, model, dataset, debug=True)
     
-    if config.fsl.model_test_path is None:
+    if config.train_test.model_test_path is None:
         routine.train(config)
         model_path = os.path.join(os.getcwd(), "output/best_model.pth")
     
-    model_path = config.fsl.model_test_path if config.fsl.model_test_path is not None else model_path
+    model_path = config.train_test.model_test_path if config.train_test.model_test_path is not None else model_path
     routine.test(config, model_path)
 
     wandb.save("log.log")

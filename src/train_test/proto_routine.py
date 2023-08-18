@@ -22,14 +22,14 @@ from lib.glass_defect_dataset.config.consts import SubsetsDict
 
 class ProtoRoutine(TrainTest):
 
-    def __init__(self, model: Model, dataset: CustomDataset, subsets_dict: SubsetsDict):
-        super().__init__(model, dataset, subsets_dict)
+    def __init__(self, model: Model, dataset: CustomDataset):
+        super().__init__(model, dataset)
         self.learning_rate = 0.001
         self.lr_scheduler_gamma = 0.5
         self.lr_scheduler_step = 20
 
     def init_loader(self, config: Config, split_set: str):
-        current_subset = self.get_subset_info(split_set)
+        current_subset = self.dataset.get_subset_info(split_set)
         
         if current_subset.subset is None:
             return None

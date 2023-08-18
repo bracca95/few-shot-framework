@@ -19,8 +19,8 @@ from src.utils.tools import Logger, Tools
 
 class StandardRoutine(TrainTest):
 
-    def __init__(self, model: Model, dataset: CustomDataset, subsets_dict: SubsetsDict):
-        super().__init__(model, dataset, subsets_dict)
+    def __init__(self, model: Model, dataset: CustomDataset):
+        super().__init__(model, dataset)
 
         self.criterion = nn.CrossEntropyLoss()
         self.criterion.to(_CG.DEVICE)
