@@ -4,7 +4,7 @@ from typing import Optional
 from torch.nn import functional as F
 from torch.nn.modules import Module
 
-from config.consts import General as _CG
+from lib.glass_defect_dataset.config.consts import General as _CG
 
 
 class PrototypicalLoss(Module):

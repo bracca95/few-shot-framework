@@ -1,7 +1,7 @@
 # Baseline Project for Defect Views dataset
 
 ## Dataset
-Your own dataset can be built by inheriting from the abstract class `CustomDataset` in `src.dataset.staple_dataset`
+Your own dataset can be built by inheriting from the abstract class `CustomDataset` in `src.dataset.dataset`
 
 ## Config
 ```

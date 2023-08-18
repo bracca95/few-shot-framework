@@ -7,10 +7,10 @@ import numpy as np
 
 from src.models.model_utils import ModelBuilder
 from src.train_test.routine_utils import RoutineBuilder
-from src.datasets.dataset_utils import DatasetBuilder
-from src.utils.config_parser import Config
+from lib.glass_defect_dataset.src.datasets.dataset_utils import DatasetBuilder
+from src.utils.config_parser import Config, read_from_json, write_to_json
 from src.utils.tools import Logger
-from config.consts import General as _CG
+from lib.glass_defect_dataset.config.consts import General as _CG
 
 SEED = 1234         # with the first protonet implementation I used 7
 
@@ -27,23 +27,27 @@ torch.backends.cudnn.deterministic = True
 
 if __name__=="__main__":
     try:
-        config = Config.deserialize("config/config.json")
+        config = read_from_json("config/config.json")
     except Exception as e:
         Logger.instance().critical(e.args)
         sys.exit(-1)
 
     try:
-        dataset = DatasetBuilder.load_dataset(config)
+        dataset = DatasetBuilder.load_dataset(config.dataset)
     except ValueError as ve:
         Logger.instance().critical(ve.args)
         sys.exit(-1)
 
     # compute mean and variance of the dataset if not done yet
-    if config.dataset_mean is None and config.dataset_std is None:
+    if config.dataset.dataset_mean is None and config.dataset.dataset_std is None:
         Logger.instance().warning("No mean and std set: computing and storing values.")
-        DatasetBuilder.compute_mean_std(dataset, config)
+        mean, std = dataset.compute_mean_std(dataset)
+        config.dataset.dataset_mean = mean.tolist()
+        config.dataset.dataset_std = std.tolist()
+        write_to_json(config, os.getcwd(), "config/config.json")
         sys.exit(0)
 
+    #### DEBUG - tested up to here ####
     ## start program
     wandb_mode = "disabled" if config.experiment_name == "disabled" else "online"
     wandb.init(

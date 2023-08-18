@@ -14,10 +14,10 @@ from src.models.FSL.ProtoNet.proto_loss import prototypical_loss as loss_fn
 from src.models.FSL.ProtoNet.proto_loss import TestResult
 from src.utils.tools import Tools, Logger
 from src.utils.config_parser import Config
-from src.datasets.staple_dataset import CustomDataset
+from lib.glass_defect_dataset.src.datasets.dataset import CustomDataset
 from src.train_test.routine import TrainTest
-from config.consts import General as _CG
-from config.consts import SubsetsDict
+from lib.glass_defect_dataset.config.consts import General as _CG
+from lib.glass_defect_dataset.config.consts import SubsetsDict
 
 
 class ProtoRoutine(TrainTest):

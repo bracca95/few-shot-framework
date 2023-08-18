@@ -1,5 +1,7 @@
 # inspired by quicktype.io
 
+from __future__ import annotations
+
 import os
 import sys
 import json
@@ -9,10 +11,13 @@ from dataclasses import dataclass, field
 from typing import Optional, Union, List, Any, Callable, Iterable, Type, cast
 
 from src.utils.tools import Tools, Logger
-from config.consts import T
-from config.consts import General as _CG
 from config.consts import ConfigConst as _CC
+from config.consts import ModelConfig as _CM
 from config.consts import FSLConsts as _CFSL
+from config.consts import TrainTestConfig as _CTT
+from lib.glass_defect_dataset.config.consts import T
+from lib.glass_defect_dataset.config.consts import General as _CG
+from lib.glass_defect_dataset.src.utils.config_parser import DatasetConfig
 
 def from_bool(x: Any) -> bool:
     Tools.check_instance(x, bool)
@@ -54,22 +59,19 @@ def to_class(c: Type[T], x: Any) -> dict:
 
 @dataclass
 class Fsl:
-    model: str
-    episodes: int
-    train_n_way: int
-    train_k_shot_s: int
-    train_k_shot_q: int
-    test_n_way: int
-    test_k_shot_s: int
-    test_k_shot_q: int
-    model_test_path: Optional[str] = None
+    episodes: int = _CG.DEFAULT_INT
+    train_n_way: int = _CG.DEFAULT_INT
+    train_k_shot_s: int = _CG.DEFAULT_INT
+    train_k_shot_q: int = _CG.DEFAULT_INT
+    test_n_way: int = _CG.DEFAULT_INT
+    test_k_shot_s: int = _CG.DEFAULT_INT
+    test_k_shot_q: int = _CG.DEFAULT_INT
 
     @classmethod
-    def deserialize(cls, obj: Any) -> 'Fsl':
+    def deserialize(cls, obj: Any) -> Fsl:
         
         try:
             Tools.check_instance(obj, dict)
-            model = from_str(obj.get(_CFSL.FSL_MODEL))
             episodes = from_int(obj.get(_CFSL.FSL_EPISODES))
             train_n_way = from_int(obj.get(_CFSL.FSL_TRAIN_N_WAY))
             train_k_shot_s = from_int(obj.get(_CFSL.FSL_TRAIN_K_SHOT_S))
@@ -77,7 +79,77 @@ class Fsl:
             test_n_way = from_int(obj.get(_CFSL.FSL_TEST_N_WAY))
             test_k_shot_s = from_int(obj.get(_CFSL.FSL_TEST_K_SHOT_S))
             test_k_shot_q = from_int(obj.get(_CFSL.FSL_TEST_K_SHOT_Q))
-            model_test_path = from_union([from_none, from_str], obj.get(_CFSL.FSL_MODEL_TEST_PATH))
+        except TypeError as te:
+            Logger.instance().error(te.args)
+            sys.exit(-1)
+
+        Logger.instance().info(
+            f"episodes: {episodes}, " +
+            f"train_n_way: {train_n_way}, train_k_shot_s: {train_k_shot_s}, train_k_shot_q: {train_k_shot_q}, " +
+            f"test_n_way: {test_n_way}, test_k_shot_s: {test_k_shot_s}, test_k_shot_q: {test_k_shot_q}"
+        )
+        return Fsl(episodes, train_n_way, train_k_shot_s, train_k_shot_q, test_n_way, test_k_shot_s, test_k_shot_q)
+
+    def serialize(self) -> dict:
+        result: dict = {}
+        
+        result[_CFSL.FSL_EPISODES] = from_int(self.episodes)
+        result[_CFSL.FSL_TRAIN_N_WAY] = from_int(self.train_n_way)
+        result[_CFSL.FSL_TRAIN_K_SHOT_S] = from_int(self.train_k_shot_s)
+        result[_CFSL.FSL_TRAIN_K_SHOT_Q] = from_int(self.train_k_shot_q)
+        result[_CFSL.FSL_TEST_N_WAY] = from_int(self.test_n_way)
+        result[_CFSL.FSL_TEST_K_SHOT_S] = from_int(self.test_k_shot_s)
+        result[_CFSL.FSL_TEST_K_SHOT_Q] = from_int(self.test_k_shot_q)
+
+        Logger.instance().info(f"FSL serialized: {result}")
+        return result
+
+
+@dataclass
+class Model:
+    model_name: str = _CG.DEFAULT_STR
+    fsl: Optional[Fsl] = None
+
+    @classmethod
+    def deserialize(cls, obj: Any) -> Model:
+        try:
+            Tools.check_instance(obj, dict)
+            model_name = from_str(obj.get(_CM.CONFIG_MODEL_NAME))
+            fsl = from_union([from_none, Fsl.deserialize], obj.get(_CM.CONFIG_FSL))
+        except TypeError as te:
+            Logger.instance().error(te.args)
+            sys.exit(-1)
+
+        Logger.instance().info(f"model_name: {model_name}, fsl: {fsl}")
+        return Model(model_name, fsl)
+    
+    def serialize(self) -> dict:
+        result: dict = {}
+
+        result[_CM.CONFIG_MODEL_NAME] = from_str(self.model_name)
+        result[_CM.CONFIG_FSL] = from_union([lambda x: to_class(Fsl, x), from_none], self.fsl)
+
+        Logger.instance().info(f"Model serialized {result}")
+        return result
+    
+
+@dataclass
+class TrainTest:
+    epochs: int = _CG.DEFAULT_INT
+    batch_size: int = _CG.DEFAULT_INT
+    model_test_path: Optional[str] = None
+    learning_rate: Optional[float] = None
+    optimizer: Optional[str] = None
+
+    @classmethod
+    def deserialize(cls, obj: Any) -> TrainTest:
+        try:
+            Tools.check_instance(obj, dict)
+            epochs = abs(from_int(obj.get(_CTT.CONFIG_EPOCHS)))
+            batch_size = abs(from_int(obj.get(_CTT.CONFIG_BATCH_SIZE)))
+            model_test_path = from_union([from_none, from_str], obj.get(_CTT.CONFIG_MODEL_TEST_PATH))
+            learning_rate = from_union([from_none, from_float], obj.get(_CTT.CONFIG_LEARNING_RATE))
+            optimizer = from_union([from_none, from_str], obj.get(_CTT.CONFIG_OPTIMIZER))
         except TypeError as te:
             Logger.instance().error(te.args)
             sys.exit(-1)
@@ -90,130 +162,79 @@ class Fsl:
                 Logger.instance().critical(f"{fnf.args}.\n{msg}")
                 sys.exit(-1)
 
-        Logger.instance().info(f"model: {model}, episodes: {episodes}, train_n_way: {train_n_way}, " +
-                                f"train_k_shot_s: {train_k_shot_s}, train_k_shot_q: {train_k_shot_q}, " +
-                                f"test_n_way: {test_n_way}, test_k_shot_s: {test_k_shot_s}, " +
-                                f"test_k_shot_q: {test_k_shot_q}, model_test_path: {model_test_path}")
-        return Fsl(model, episodes, train_n_way, train_k_shot_s, train_k_shot_q, test_n_way, test_k_shot_s, test_k_shot_q, model_test_path)
-
+        Logger.instance().info(
+            f"epochs: {epochs}, batch_size: {batch_size}, model_test_path: {model_test_path}, " +
+            f"learning_rate: {learning_rate}, optimizer: {optimizer}"
+        )
+        
+        return TrainTest(epochs, batch_size, model_test_path, learning_rate, optimizer)
+    
     def serialize(self) -> dict:
         result: dict = {}
-        
-        result[_CFSL.FSL_MODEL] = from_str(self.model)
-        result[_CFSL.FSL_EPISODES] = from_int(self.episodes)
-        result[_CFSL.FSL_TRAIN_N_WAY] = from_int(self.train_n_way)
-        result[_CFSL.FSL_TRAIN_K_SHOT_S] = from_int(self.train_k_shot_s)
-        result[_CFSL.FSL_TRAIN_K_SHOT_Q] = from_int(self.train_k_shot_q)
-        result[_CFSL.FSL_TEST_N_WAY] = from_int(self.test_n_way)
-        result[_CFSL.FSL_TEST_K_SHOT_S] = from_int(self.test_k_shot_s)
-        result[_CFSL.FSL_TEST_K_SHOT_Q] = from_int(self.test_k_shot_q)
-        result[_CFSL.FSL_MODEL_TEST_PATH] = from_union([from_none, from_str], self.model_test_path)
 
-        Logger.instance().info(f"ObjectList serialized: {result}")
+        result[_CTT.CONFIG_EPOCHS] = from_int(self.epochs)
+        result[_CTT.CONFIG_BATCH_SIZE] = from_int(self.batch_size)
+        result[_CTT.CONFIG_MODEL_TEST_PATH] = from_union([from_none, from_str], self.model_test_path)
+        result[_CTT.CONFIG_LEARNING_RATE] = from_union([from_none, from_float], self.learning_rate)
+        result[_CTT.CONFIG_OPTIMIZER] = from_union([from_none, from_str], self.optimizer)
+
+        Logger.instance().info(f"TrainTest serialized: {result}")
         return result
 
 
 @dataclass
 class Config:
     experiment_name: str = "random_generated_name"
-    dataset_path: str = _CG.DEFAULT_STR
-    dataset_type: str = _CG.DEFAULT_STR
-    dataset_splits: List[float] = field(default_factory=list)
-    batch_size: int = _CG.DEFAULT_INT
-    epochs: int = _CG.DEFAULT_INT
-    crop_size: int = _CG.DEFAULT_INT
-    image_size: int = _CG.DEFAULT_INT
-    augment_online: Optional[List[str]] = None
-    augment_offline: Optional[List[str]] = None
-    dataset_mean: Optional[List[float]] = None
-    dataset_std: Optional[List[float]] = None
-    fsl: Optional[Fsl] = None
+    dataset: DatasetConfig = DatasetConfig()
+    model: Model = Model()
+    train_test: TrainTest = TrainTest()
 
     @classmethod
-    def deserialize(cls, str_path: str) -> 'Config':
-        obj = Tools.read_json(str_path)
-        
+    def deserialize(cls, obj: Any) -> Config:
         try:
-            dataset_path = Tools.validate_path(obj.get(_CC.CONFIG_DATASET_PATH))
-        except (FileNotFoundError, ValueError) as fnf:
-            Logger.instance().error(fnf.args)
-            dataset_path = input("insert dataset path: ")
-            while not os.path.exists(dataset_path):
-                dataset_path = input("insert dataset path: ")
-                
-        try:
+            Tools.check_instance(obj, dict)
             experiment_name = from_str(obj.get(_CC.CONFIG_EXPERIMENT_NAME))
-            dataset_type = from_str(obj.get(_CC.CONFIG_DATASET_TYPE))
-            dataset_splits = from_list(lambda x: from_float(x), obj.get(_CC.CONFIG_DATASET_SPLITS))
-            batch_size = from_int(obj.get(_CC.CONFIG_BATCH_SIZE))
-            epochs = from_int(obj.get(_CC.CONFIG_EPOCHS))
-            crop_size = from_int(obj.get(_CC.CONFIG_CROP_SIZE))
-            image_size = from_int(obj.get(_CC.CONFIG_IMAGE_SIZE))
-            augment_online = from_union([lambda x: from_list(from_str, x), from_none], obj.get(_CC.CONFIG_AUGMENT_ONLINE))
-            augment_offline = from_union([lambda x: from_list(from_str, x), from_none], obj.get(_CC.CONFIG_AUGMENT_OFFLINE))
-            dataset_mean = from_union([lambda x: from_list(from_float, x), from_none], obj.get(_CC.CONFIG_DATASET_MEAN))
-            dataset_std = from_union([lambda x: from_list(from_float, x), from_none], obj.get(_CC.CONFIG_DATASET_STD))
-            fsl = from_union([Fsl.deserialize, from_none], obj.get(_CC.CONFIG_FSL))
+            dataset = DatasetConfig.deserialize(obj.get(_CC.CONFIG_DATASET))
+            model = Model.deserialize(obj.get(_CC.CONFIG_MODEL))
+            train_test = TrainTest.deserialize(obj.get(_CC.CONFIG_TRAIN_TEST))
         except TypeError as te:
             Logger.instance().critical(te.args)
             sys.exit(-1)
-
-        if augment_online is not None:
-            if len(augment_online) == 0:
-                augment_online = None
-
-        if augment_offline is not None:
-            if len(augment_offline) == 0:
-                augment_offline = None
-
-        if len(dataset_splits) not in (1, 3):
-            raise ValueError("`dataset_splits` must have len == 1 (train/test) or len == 3 (train/val/test)")
         
-        if len(dataset_splits) == 3:
-            if 1.0-_CG.EPS < reduce(lambda a,b: a+b, dataset_splits) < 1.0+_CG.EPS:
-                pass
-            else:
-                raise ValueError("the sum for dataset_splits must be 1")
+        Logger.instance().info(
+            f"Config deserialized: experiment_name: {experiment_name}, dataset: {dataset}, model: {model}, " +
+            f"train_test: {train_test}"
+        )
         
-        Logger.instance().info(f"Config deserialized: " +
-            f"experiment_name: {experiment_name}, dataset_path: {dataset_path}, dataset_type: {dataset_type}, " +
-            f"dataset_splits: {dataset_splits}, augment_online: {augment_online}, augment_offline: {augment_offline}, " +
-            f"batch_size {batch_size}, epochs: {epochs}, dataset mean: {dataset_mean}, dataset_std: {dataset_std}, " +
-            f"crop_size: {crop_size}, image_size: {image_size}, fsl: {fsl}")
-        
-        return Config(experiment_name, dataset_path, dataset_type, dataset_splits, batch_size, epochs, crop_size, image_size, augment_online, augment_offline, dataset_mean, dataset_std, fsl)
-
-    def serialize(self, directory: str, filename: str):
+        return Config(experiment_name, dataset, model, train_test)
+    
+    def serialize(self) -> dict:
         result: dict = {}
-        dire = None
-
-        try:
-            dire = Tools.validate_path(directory)
-        except FileNotFoundError as fnf:
-            Logger.instance().critical(f"{fnf.args}")
-            sys.exit(-1)
         
         # if you do not want to write null values, add a field to result if and only if self.field is not None
         result[_CC.CONFIG_EXPERIMENT_NAME] = from_str(self.experiment_name)
-        result[_CC.CONFIG_DATASET_PATH] = from_str(self.dataset_path)
-        result[_CC.CONFIG_DATASET_TYPE] = from_str(self.dataset_type)
-        result[_CC.CONFIG_DATASET_SPLITS] = from_list(lambda x: from_float(x), self.dataset_splits)
-        result[_CC.CONFIG_BATCH_SIZE] = from_int(self.batch_size)
-        result[_CC.CONFIG_EPOCHS] = from_int(self.epochs)
-        result[_CC.CONFIG_CROP_SIZE] = from_int(self.crop_size)
-        result[_CC.CONFIG_IMAGE_SIZE] = from_int(self.image_size)
-        result[_CC.CONFIG_AUGMENT_ONLINE] = from_union([lambda x: from_list(from_str, x), from_none], self.augment_online)
-        result[_CC.CONFIG_AUGMENT_OFFLINE] = from_union([lambda x: from_list(from_str, x), from_none], self.augment_offline)
-        result[_CC.CONFIG_DATASET_MEAN] = from_union([lambda x: from_list(from_float, x), from_none], self.dataset_mean)
-        result[_CC.CONFIG_DATASET_STD] = from_union([lambda x: from_list(from_float, x), from_none], self.dataset_std)
-        result[_CC.CONFIG_FSL] = from_union([lambda x: to_class(Fsl, x), from_none], self.fsl)
+        result[_CC.CONFIG_DATASET] = to_class(DatasetConfig, self.dataset)
+        result[_CC.CONFIG_MODEL] = to_class(Model, self.model)
+        result[_CC.CONFIG_TRAIN_TEST] = to_class(TrainTest, self.train_test)
 
-        with open(os.path.join(dire, filename), "w") as f:
-            json_dict = json.dumps(result, indent=4)
-            f.write(json_dict)
-
-        Logger.instance().info("Config serialized")
+        Logger.instance().info(f"Config serialized {result}")
+        return result
 
 
-def config_to_json(x: Config) -> Any:
-    return to_class(Config, x)
+def read_from_json(str_path: str) -> Config:
+    obj = Tools.read_json(str_path)
+    return Config.deserialize(obj)
+
+def write_to_json(config: Config, directory: str, filename: str) -> None:
+    dire = None
+    
+    try:
+        dire = Tools.validate_path(directory)
+    except FileNotFoundError as fnf:
+        Logger.instance().critical(f"{fnf.args}")
+        sys.exit(-1)
+
+    serialized_config = config.serialize()
+    with open(os.path.join(dire, filename), "w") as f:
+        json_dict = json.dumps(serialized_config, indent=4)
+        f.write(json_dict)

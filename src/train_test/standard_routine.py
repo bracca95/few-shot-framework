@@ -9,9 +9,9 @@ from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
 
 from src.models.model import Model
-from src.datasets.staple_dataset import CustomDataset
-from config.consts import General as _CG
-from config.consts import SubsetsDict
+from lib.glass_defect_dataset.src.datasets.dataset import CustomDataset
+from lib.glass_defect_dataset.config.consts import General as _CG
+from lib.glass_defect_dataset.config.consts import SubsetsDict
 from src.train_test.routine import TrainTest
 from src.utils.config_parser import Config
 from src.utils.tools import Logger, Tools

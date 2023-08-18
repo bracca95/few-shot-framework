@@ -5,10 +5,8 @@ import json
 import logging
 
 from typing import Type, Any, Union, Optional, List
-from torch.utils.data import DataLoader
-from torchvision.utils import make_grid
 
-from config.consts import T
+from lib.glass_defect_dataset.config.consts import T
 
 
 class Singleton:

@@ -8,9 +8,8 @@ from collections import deque
 from src.utils.tools import Logger
 from src.utils.config_parser import Config
 from src.models.model import Model
-from src.datasets.staple_dataset import CustomDataset
-from src.datasets.dataset_utils import SubsetInfo
-from config.consts import SubsetsDict, General
+from lib.glass_defect_dataset.src.datasets.dataset import CustomDataset, SubsetInfo
+from lib.glass_defect_dataset.config.consts import SubsetsDict, General
 
 
 class TrainTest(ABC):
