@@ -101,8 +101,7 @@ class ProtoRoutine(TrainTest):
                 optim.zero_grad()
                 x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
                 model_output = self.model(x)
-                loss, acc = ProtoTools.proto_loss(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query,
-                                                  enhancement=self.mod, sqrt_eucl=True)
+                loss, acc = ProtoTools.proto_loss(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query, enhance=self.mod, sqrt_eucl=True)
                 loss.backward()
                 optim.step()
                 train_loss.append(loss.item())
@@ -163,7 +162,7 @@ class ProtoRoutine(TrainTest):
             for x, y in valloader:
                 x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
                 model_output = self.model(x)
-                loss, acc = ProtoTools.proto_loss(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query, sqrt_eucl=True)
+                loss, acc = ProtoTools.proto_loss(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query, enhance=self.mod, sqrt_eucl=True)
                 val_loss.append(loss.item())
                 val_acc.append(acc.item())
             avg_loss_eval = np.mean(val_loss[-episodes:])
@@ -210,7 +209,7 @@ class ProtoRoutine(TrainTest):
                     y_pred = self.model(x)
 
                     # (overall accuracy [legacy], accuracy per class)
-                    legacy_acc, acc_vals = tr.proto_test(y_pred, target=y, n_way=n_way, n_support=k_support, n_query=k_query, sqrt_eucl=True)
+                    legacy_acc, acc_vals = tr.proto_test(y_pred, target=y, n_way=n_way, n_support=k_support, n_query=k_query, enhance=self.mod, sqrt_eucl=True)
                     legacy_avg_acc.append(legacy_acc.item())
                     for k, v in acc_vals.items():
                         score_per_class[k] = torch.cat((score_per_class[k], v.reshape(1,)))
