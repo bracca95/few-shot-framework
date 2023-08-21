@@ -6,12 +6,13 @@ import numpy as np
 
 from tqdm import tqdm
 from torch.utils.data import DataLoader
-from typing import List
+from typing import Optional, List, Tuple
 
 from src.models.model import Model
+from src.models.FSL.ProtoNet.distance_module import DistScale
 from src.models.FSL.ProtoNet.proto_batch_sampler import PrototypicalBatchSampler
-from src.models.FSL.ProtoNet.proto_loss import prototypical_loss as loss_fn
-from src.models.FSL.ProtoNet.proto_loss import TestResult
+from src.models.FSL.ProtoNet.proto_loss import ProtoTools, TestResult
+from src.models.FSL.ProtoNet.proto_extra_modules import ProtoEnhancements
 from src.train_test.routine import TrainTest
 from src.utils.tools import Tools, Logger
 from src.utils.config_parser import TrainTest as TrainTestConfig
@@ -30,6 +31,9 @@ class ProtoRoutine(TrainTest):
         # python's linter does not take into account this check, but the rest is correct
         if self._model_config.fsl is None:
             raise ValueError("fsl field cannot be null in config")
+        
+        # extra modules (if `enhancement` is specified)
+        self.mod = ProtoEnhancements(self._model_config.fsl)
 
     def init_loader(self, split_set: str):
         current_subset = self.dataset.get_subset_info(split_set)
@@ -85,14 +89,19 @@ class ProtoRoutine(TrainTest):
         last_model_path = os.path.join(out_folder, "last_model.pth")
         last_val_model_path = os.path.join(out_folder, "last_val_model.pth")
 
+        fsl_cfg = self._model_config.fsl
+        n_way, k_support, k_query = (fsl_cfg.train_n_way, fsl_cfg.train_k_shot_s, fsl_cfg.train_k_shot_q)
+        val_config = (fsl_cfg.train_n_way, fsl_cfg.train_k_shot_s, fsl_cfg.train_k_shot_q, fsl_cfg.episodes)
+
         for eidx, epoch in enumerate(range(self.train_test_config.epochs)):
             Logger.instance().debug(f"=== Epoch: {epoch} ===")
             self.model.train()
+            self.mod.train()
             for x, y in tqdm(trainloader):
                 optim.zero_grad()
                 x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
                 model_output = self.model(x)
-                loss, acc = loss_fn(model_output, target=y, n_support=self._model_config.fsl.train_k_shot_s)
+                loss, acc = ProtoTools.proto_loss(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query, sqrt_eucl=False)
                 loss.backward()
                 optim.step()
                 train_loss.append(loss.item())
@@ -118,7 +127,7 @@ class ProtoRoutine(TrainTest):
 
             ## VALIDATION
             if valloader is not None:
-                avg_loss_eval, avg_acc_eval = self.validate(valloader, val_loss, val_acc)
+                avg_loss_eval, avg_acc_eval = self.validate(val_config, valloader, val_loss, val_acc)
                 if avg_acc_eval >= best_acc:
                     Logger.instance().debug(f"Found the best evaluation model at epoch {epoch}!")
                     torch.save(self.model.state_dict(), val_model_path)
@@ -142,19 +151,21 @@ class ProtoRoutine(TrainTest):
 
                 return
 
-    def validate(self, valloader: DataLoader, val_loss: List[float], val_acc: List[float]):
+    def validate(self, val_config: Tuple, valloader: DataLoader, val_loss: List[float], val_acc: List[float]):
         Logger.instance().debug("Validating!")
+
+        n_way, k_support, k_query, episodes = (val_config)
         
         self.model.eval()
         with torch.no_grad():
             for x, y in valloader:
                 x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
                 model_output = self.model(x)
-                loss, acc = loss_fn(model_output, target=y, n_support=self._model_config.fsl.train_k_shot_s)
+                loss, acc = ProtoTools.proto_loss(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query, sqrt_eucl=False)
                 val_loss.append(loss.item())
                 val_acc.append(acc.item())
-            avg_loss_eval = np.mean(val_loss[-self._model_config.fsl.episodes:])
-            avg_acc_eval = np.mean(val_acc[-self._model_config.fsl.episodes:])
+            avg_loss_eval = np.mean(val_loss[-episodes:])
+            avg_acc_eval = np.mean(val_acc[-episodes:])
 
         Logger.instance().debug(f"Avg Val Loss: {avg_loss_eval}, Avg Val Acc: {avg_acc_eval}")
 
@@ -183,6 +194,8 @@ class ProtoRoutine(TrainTest):
 
         tr_acc_max = 0.0
         tr_max = TestResult()
+
+        n_way, k_support, k_query = (self._model_config.fsl.test_n_way, self._model_config.fsl.test_k_shot_s, self._model_config.fsl.test_k_shot_q)
         
         self.model.eval()
         with torch.no_grad():
@@ -194,7 +207,7 @@ class ProtoRoutine(TrainTest):
                     y_pred = self.model(x)
 
                     # (overall accuracy [legacy], accuracy per class)
-                    legacy_acc, acc_vals = tr.proto_test(y_pred, target=y, n_support=self._model_config.fsl.test_k_shot_s)
+                    legacy_acc, acc_vals = tr.proto_test(y_pred, target=y, n_way=n_way, n_support=k_support, n_query=k_query, sqrt_eucl=False)
                     legacy_avg_acc.append(legacy_acc.item())
                     for k, v in acc_vals.items():
                         score_per_class[k] = torch.cat((score_per_class[k], v.reshape(1,)))

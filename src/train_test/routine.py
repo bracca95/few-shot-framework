@@ -50,7 +50,7 @@ class TrainTest(ABC):
         if torch.max(acc_var) - torch.min(acc_var) > 2 * eps:
             return False
         
-        Logger.instance().warning(f"Raised stop iteration: last {len(self.acc_var)} increment below {2 * eps}.")
+        Logger.instance().warning(f"Raised stop condition: last {len(self.acc_var)} increment below {2 * eps}")
         return True
 
 

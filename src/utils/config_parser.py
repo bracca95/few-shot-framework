@@ -66,6 +66,7 @@ class Fsl:
     test_n_way: int = _CG.DEFAULT_INT
     test_k_shot_s: int = _CG.DEFAULT_INT
     test_k_shot_q: int = _CG.DEFAULT_INT
+    enhancement: Optional[str] = None
 
     @classmethod
     def deserialize(cls, obj: Any) -> Fsl:
@@ -79,6 +80,7 @@ class Fsl:
             test_n_way = from_int(obj.get(_CFSL.FSL_TEST_N_WAY))
             test_k_shot_s = from_int(obj.get(_CFSL.FSL_TEST_K_SHOT_S))
             test_k_shot_q = from_int(obj.get(_CFSL.FSL_TEST_K_SHOT_Q))
+            enhancement = from_union([from_none, from_str], obj.get(_CFSL.FSL_ENHANCEMENT))
         except TypeError as te:
             Logger.instance().error(te.args)
             sys.exit(-1)
@@ -86,9 +88,10 @@ class Fsl:
         Logger.instance().info(
             f"episodes: {episodes}, " +
             f"train_n_way: {train_n_way}, train_k_shot_s: {train_k_shot_s}, train_k_shot_q: {train_k_shot_q}, " +
-            f"test_n_way: {test_n_way}, test_k_shot_s: {test_k_shot_s}, test_k_shot_q: {test_k_shot_q}"
+            f"test_n_way: {test_n_way}, test_k_shot_s: {test_k_shot_s}, test_k_shot_q: {test_k_shot_q}, " +
+            f"enhancement: {enhancement}"
         )
-        return Fsl(episodes, train_n_way, train_k_shot_s, train_k_shot_q, test_n_way, test_k_shot_s, test_k_shot_q)
+        return Fsl(episodes, train_n_way, train_k_shot_s, train_k_shot_q, test_n_way, test_k_shot_s, test_k_shot_q, enhancement)
 
     def serialize(self) -> dict:
         result: dict = {}
@@ -100,6 +103,7 @@ class Fsl:
         result[_CFSL.FSL_TEST_N_WAY] = from_int(self.test_n_way)
         result[_CFSL.FSL_TEST_K_SHOT_S] = from_int(self.test_k_shot_s)
         result[_CFSL.FSL_TEST_K_SHOT_Q] = from_int(self.test_k_shot_q)
+        result[_CFSL.FSL_ENHANCEMENT] = from_union([from_none, from_str], self.enhancement)
 
         Logger.instance().info(f"FSL serialized: {result}")
         return result

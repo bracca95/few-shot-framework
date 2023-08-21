@@ -19,6 +19,7 @@ class FSLConsts:
     FSL_TEST_N_WAY = "test_n_way"
     FSL_TEST_K_SHOT_S = "test_k_shot_s"
     FSL_TEST_K_SHOT_Q = "test_k_shot_q"
+    FSL_ENHANCEMENT = "enhancement"
 
 class TrainTestConfig:
     CONFIG_EPOCHS = "epochs"
