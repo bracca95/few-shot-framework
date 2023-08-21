@@ -9,8 +9,9 @@ class ProtoEnhancements:
 
     def __init__(self, fsl_config: FslConfig):
         self.fsl_config = fsl_config
+        self.name = fsl_config.enhancement
 
-        if self.fsl_config.enhancement == "ipn":
+        if self.name == "ipn":
             if not self.fsl_config.train_n_way == self.fsl_config.test_n_way:
                 raise ValueError(f"For distance scaling train/test n_way must be equal \
                                  ({self.fsl_config.train_n_way} != {self.fsl_config.test_n_way})")
@@ -21,7 +22,7 @@ class ProtoEnhancements:
 
     def train(self):
         if self.module is None:
-            Logger.instance().debug(f"No extra module added in train")
+            Logger.instance().debug(f"No extra module added in train. Enhance is {self.name}")
             return
         
         self.module.train()
@@ -29,7 +30,7 @@ class ProtoEnhancements:
 
     def eval(self):
         if self.module is None:
-            Logger.instance().debug(f"No extra module added in test")
+            Logger.instance().debug(f"No extra module added in test. Enhance is {self.name}")
             return
         
         self.module.eval()

@@ -11,7 +11,7 @@ from lib.glass_defect_dataset.config.consts import General as _CG
 class ProtoTools:
 
     @staticmethod
-    def euclidean_dist(x: torch.Tensor, y: torch.Tensor, sqrt: bool=False) -> torch.Tensor:
+    def euclidean_dist(x: torch.Tensor, y: torch.Tensor, sqrt: bool=True) -> torch.Tensor:
         """Compute euclidean distance between two tensors
         
         Args:
@@ -52,7 +52,7 @@ class ProtoTools:
         return support_set, query_set
     
     @staticmethod
-    def get_dists(s_batch: torch.Tensor, q_batch: torch.Tensor, enhance: ProtoEnhancements, **kwargs: dict) -> torch.Tensor:
+    def get_dists(s_batch: torch.Tensor, q_batch: torch.Tensor, enhance: ProtoEnhancements, **kwargs) -> torch.Tensor:
         n_classes, n_query, n_feat = (q_batch.shape)
 
         sqrt_eucl = False
@@ -64,22 +64,27 @@ class ProtoTools:
         dists = ProtoTools.euclidean_dist(q_batch.view(-1, n_feat), protos, sqrt_eucl)
         ### EOF: vanilla protonet
 
-        if enhance.fsl_config.enhancement == "ipn":
+        if enhance.name == "ipn":
             proto_dists = ProtoTools.euclidean_dist(s_batch.view(-1, n_feat), protos, sqrt_eucl)
             mean_dists = torch.mean(proto_dists.view(n_classes, -1, n_classes), dim=1)
             alphas = enhance.module.forward(mean_dists)
             dists = alphas * dists
-        elif enhance.fsl_config.enhancement == "dist_of_dists":
-            pass
+        elif enhance.name == "dist_of_dists":
+            proto_dists = ProtoTools.euclidean_dist(s_batch.view(-1, n_feat), protos, sqrt_eucl)
+            query_dists = ProtoTools.euclidean_dist(q_batch.view(-1, n_feat), protos, sqrt_eucl)
+            mean_dists = torch.mean(proto_dists.view(n_classes, -1, n_classes), dim=1)
+            dists = ProtoTools.euclidean_dist(query_dists, mean_dists, sqrt_eucl)
         else:
             pass
         
         return dists 
     
     @staticmethod
-    def proto_loss(recons: torch.Tensor, target: torch.Tensor, n_way: int, n_support: int, n_query: int, enhance: ProtoEnhancements, **kwargs: dict) -> Tuple[torch.Tensor, torch.Tensor]:
+    def proto_loss(recons: torch.Tensor, target: torch.Tensor, n_way: int, n_support: int, n_query: int, 
+                   enhance: ProtoEnhancements, sqrt_eucl: bool
+                   ) -> Tuple[torch.Tensor, torch.Tensor]:
         s_batch, q_batch = ProtoTools.split_support_query(recons, target, n_way, n_support, n_query)
-        dists = ProtoTools.get_dists(s_batch, q_batch, enhance, **kwargs)
+        dists = ProtoTools.get_dists(s_batch, q_batch, enhance, sqrt_eucl=sqrt_eucl)
 
         log_p_y = F.log_softmax(-dists, dim=1).view(n_way, n_query, -1)
         target_inds = torch.arange(0, n_way).to(_CG.DEVICE)
@@ -99,11 +104,11 @@ class TestResult:
         self.y_hat = torch.Tensor().to(_CG.DEVICE)
         self.target_inds = torch.Tensor().to(_CG.DEVICE)
 
-    def proto_test(self, recons: torch.Tensor, target: torch.Tensor, n_way: int, n_support: int, n_query: int, enhance: ProtoEnhancements, **kwargs):
+    def proto_test(self, recons: torch.Tensor, target: torch.Tensor, n_way: int, n_support: int, n_query: int, enhance: ProtoEnhancements, sqrt_eucl: bool):
         mapping = { i: i for i in range(n_way) }
         
         s_batch, q_batch = ProtoTools.split_support_query(recons, target, n_way, n_support, n_query)
-        dists = ProtoTools.get_dists(s_batch, q_batch, enhance, **kwargs)
+        dists = ProtoTools.get_dists(s_batch, q_batch, enhance, sqrt_eucl=sqrt_eucl)
 
         log_p_y = F.log_softmax(-dists, dim=1).view(n_way, n_query, -1)
         target_inds = torch.arange(0, n_way).to(_CG.DEVICE)
