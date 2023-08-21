@@ -32,7 +32,7 @@
             "test_n_way": 7,
             "test_k_shot_s": 5,
             "test_k_shot_q": 5,
-            "enhancement": null
+            "enhancement": "ipn"
         }
     },
     "train_test": {

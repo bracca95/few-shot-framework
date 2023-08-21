@@ -58,15 +58,21 @@ class ProtoTools:
         if "sqrt_eucl" in kwargs:
             sqrt_eucl: bool = kwargs["sqrt_eucl"]
 
+        ### vanilla protonet
         protos = torch.mean(s_batch, dim=1)
         dists = ProtoTools.euclidean_dist(q_batch.view(-1, n_feat), protos, sqrt_eucl)
-        
+        ### EOF: vanilla protonet
+
         if "enhancement" in kwargs:
             if kwargs["enhancement"] is not None and type(kwargs["enhancement"] is torch.nn.Module):
-                module: torch.nn.Module = kwargs["enhancement"]
-                mean_dists = ProtoTools.euclidean_dist(s_batch, protos)
-                alphas = module(mean_dists)
-                dists = alphas * dists
+                module: Optional[torch.nn.Module] = kwargs["enhancement"].module
+                if module is None:
+                    dists = dists
+                else:
+                    proto_dists = ProtoTools.euclidean_dist(s_batch.view(-1, n_feat), protos, sqrt_eucl)
+                    mean_dists = torch.mean(proto_dists.view(n_classes, -1, n_classes), dim=1)
+                    alphas = module.forward(mean_dists)
+                    dists = alphas * dists
         
         return dists 
     

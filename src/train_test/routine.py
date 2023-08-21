@@ -38,9 +38,6 @@ class TrainTest(ABC):
     def check_stop_conditions(self, curr_acc: float, limit: float = 0.985, eps: float = 0.001) -> bool:
         if curr_acc < limit:
             return False
-        if curr_acc > 0.990:
-            Logger.instance().warning(f"Raised stop condition: accuracy greater than 0.99")
-            return True
         
         if not len(self.acc_var) == self.acc_var.maxlen:
             self.acc_var.append(curr_acc)

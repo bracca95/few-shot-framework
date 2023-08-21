@@ -14,8 +14,8 @@ class DistScale(nn.Module):
         
         super().__init__()
         self.linear = nn.Sequential(
-            #nn.BatchNorm1d(out_len),
-            nn.Softmax(dim=1),
+            nn.BatchNorm1d(out_len),
+            #nn.Softmax(dim=1),
             nn.Flatten(0),
             nn.Linear(in_len, out_len),
             nn.Sigmoid()

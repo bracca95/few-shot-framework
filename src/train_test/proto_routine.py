@@ -101,7 +101,8 @@ class ProtoRoutine(TrainTest):
                 optim.zero_grad()
                 x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
                 model_output = self.model(x)
-                loss, acc = ProtoTools.proto_loss(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query, sqrt_eucl=True)
+                loss, acc = ProtoTools.proto_loss(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query,
+                                                  enhancement=self.mod, sqrt_eucl=True)
                 loss.backward()
                 optim.step()
                 train_loss.append(loss.item())
@@ -157,6 +158,7 @@ class ProtoRoutine(TrainTest):
         n_way, k_support, k_query, episodes = (val_config)
         
         self.model.eval()
+        self.mod.eval()
         with torch.no_grad():
             for x, y in valloader:
                 x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
@@ -198,6 +200,7 @@ class ProtoRoutine(TrainTest):
         n_way, k_support, k_query = (self._model_config.fsl.test_n_way, self._model_config.fsl.test_k_shot_s, self._model_config.fsl.test_k_shot_q)
         
         self.model.eval()
+        self.mod.eval()
         with torch.no_grad():
             for epoch in tqdm(range(10)):
                 tr = TestResult()
