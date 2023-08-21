@@ -9,8 +9,10 @@ from torch.utils.data import DataLoader
 from typing import Optional, List, Tuple
 
 from src.models.model import Model
+from src.models.FSL.ProtoNet.distance_module import DistScale
 from src.models.FSL.ProtoNet.proto_batch_sampler import PrototypicalBatchSampler
 from src.models.FSL.ProtoNet.proto_loss import ProtoTools, TestResult
+from src.models.FSL.ProtoNet.proto_extra_modules import ProtoEnhancements
 from src.train_test.routine import TrainTest
 from src.utils.tools import Tools, Logger
 from src.utils.config_parser import TrainTest as TrainTestConfig
@@ -29,6 +31,9 @@ class ProtoRoutine(TrainTest):
         # python's linter does not take into account this check, but the rest is correct
         if self._model_config.fsl is None:
             raise ValueError("fsl field cannot be null in config")
+        
+        # extra modules (if `enhancement` is specified)
+        self.mod = ProtoEnhancements(self._model_config.fsl)
 
     def init_loader(self, split_set: str):
         current_subset = self.dataset.get_subset_info(split_set)
@@ -95,11 +100,8 @@ class ProtoRoutine(TrainTest):
             for x, y in tqdm(trainloader):
                 optim.zero_grad()
                 x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
-                
                 model_output = self.model(x)
-                s_batch, q_batch = ProtoTools.split_support_query(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query)
-                loss, acc = ProtoTools.proto_loss(s_batch, q_batch)
-                
+                loss, acc = ProtoTools.proto_loss(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query, sqrt_eucl=True)
                 loss.backward()
                 optim.step()
                 train_loss.append(loss.item())
@@ -159,8 +161,7 @@ class ProtoRoutine(TrainTest):
             for x, y in valloader:
                 x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
                 model_output = self.model(x)
-                s_batch, q_batch = ProtoTools.split_support_query(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query)
-                loss, acc = ProtoTools.proto_loss(s_batch, q_batch)
+                loss, acc = ProtoTools.proto_loss(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query, sqrt_eucl=True)
                 val_loss.append(loss.item())
                 val_acc.append(acc.item())
             avg_loss_eval = np.mean(val_loss[-episodes:])
@@ -204,10 +205,9 @@ class ProtoRoutine(TrainTest):
                 for x, y in testloader:
                     x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
                     y_pred = self.model(x)
-                    s_batch, q_batch = ProtoTools.split_support_query(y_pred, target=y, n_way=n_way, n_support=k_support, n_query=k_query)
 
                     # (overall accuracy [legacy], accuracy per class)
-                    legacy_acc, acc_vals = tr.proto_test(s_batch, q_batch)
+                    legacy_acc, acc_vals = tr.proto_test(y_pred, target=y, n_way=n_way, n_support=k_support, n_query=k_query, sqrt_eucl=True)
                     legacy_avg_acc.append(legacy_acc.item())
                     for k, v in acc_vals.items():
                         score_per_class[k] = torch.cat((score_per_class[k], v.reshape(1,)))
