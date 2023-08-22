@@ -64,12 +64,12 @@ class ProtoTools:
         dists = ProtoTools.euclidean_dist(q_batch.view(-1, n_feat), protos, sqrt_eucl)
         ### EOF: vanilla protonet
 
-        if enhance.name == "ipn":
+        if enhance.name == ProtoEnhancements.MOD_IPN:
             proto_dists = ProtoTools.euclidean_dist(s_batch.view(-1, n_feat), protos, sqrt_eucl)
             mean_dists = torch.mean(proto_dists.view(n_classes, -1, n_classes), dim=1)
-            alphas = enhance.module.forward(mean_dists)
+            alphas = enhance.module_list[0].forward(mean_dists)
             dists = alphas * dists
-        elif enhance.name == "dist_of_dists":
+        elif enhance.name == ProtoEnhancements.MOD_DIST:
             proto_dists = ProtoTools.euclidean_dist(s_batch.view(-1, n_feat), protos, sqrt_eucl)
             query_dists = ProtoTools.euclidean_dist(q_batch.view(-1, n_feat), protos, sqrt_eucl)
             mean_dists = torch.mean(proto_dists.view(n_classes, -1, n_classes), dim=1)

@@ -33,7 +33,7 @@ class ProtoRoutine(TrainTest):
             raise ValueError("fsl field cannot be null in config")
         
         # extra modules (if `enhancement` is specified)
-        self.mod = ProtoEnhancements(self._model_config.fsl)
+        self.mod = ProtoEnhancements(self.model, self._model_config.fsl)
 
     def init_loader(self, split_set: str):
         current_subset = self.dataset.get_subset_info(split_set)
@@ -95,12 +95,11 @@ class ProtoRoutine(TrainTest):
 
         for eidx, epoch in enumerate(range(self.train_test_config.epochs)):
             Logger.instance().debug(f"=== Epoch: {epoch} ===")
-            self.model.train()
             self.mod.train()
             for x, y in tqdm(trainloader):
                 optim.zero_grad()
                 x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
-                model_output = self.model(x)
+                model_output = self.mod.base_model(x)
                 loss, acc = ProtoTools.proto_loss(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query, enhance=self.mod, sqrt_eucl=True)
                 loss.backward()
                 optim.step()
@@ -117,7 +116,7 @@ class ProtoRoutine(TrainTest):
             if avg_acc >= best_acc:
                 Logger.instance().debug(f"Found the best model at epoch {epoch}!")
                 best_acc = avg_acc
-                torch.save(self.model.state_dict(), best_model_path)
+                self.mod.save_models(best_model_path)
 
             if avg_loss < best_loss:
                 best_loss = avg_loss
@@ -130,7 +129,7 @@ class ProtoRoutine(TrainTest):
                 avg_loss_eval, avg_acc_eval = self.validate(val_config, valloader, val_loss, val_acc)
                 if avg_acc_eval >= best_acc:
                     Logger.instance().debug(f"Found the best evaluation model at epoch {epoch}!")
-                    torch.save(self.model.state_dict(), val_model_path)
+                    self.mod.save_models(val_model_path)
 
                 # wandb
                 wdb_dict["val_loss"] = avg_loss_eval
@@ -144,7 +143,7 @@ class ProtoRoutine(TrainTest):
             if eidx == self.train_test_config.epochs-1 or self.check_stop_conditions(best_acc):
                 pth_path = last_val_model_path if valloader is not None else last_model_path
                 Logger.instance().debug(f"STOP: saving last epoch model named `{os.path.basename(pth_path)}`")
-                torch.save(self.model.state_dict(), pth_path)
+                self.mod.save_models(pth_path)
 
                 # wandb: save all models
                 wandb.save(f"{out_folder}/*.pth")
@@ -156,12 +155,11 @@ class ProtoRoutine(TrainTest):
 
         n_way, k_support, k_query, episodes = (val_config)
         
-        self.model.eval()
         self.mod.eval()
         with torch.no_grad():
             for x, y in valloader:
                 x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
-                model_output = self.model(x)
+                model_output = self.mod.base_model(x)
                 loss, acc = ProtoTools.proto_loss(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query, enhance=self.mod, sqrt_eucl=True)
                 val_loss.append(loss.item())
                 val_acc.append(acc.item())
@@ -188,7 +186,7 @@ class ProtoRoutine(TrainTest):
             Logger.instance().error(f"{ve.args}. No test performed")
             return
 
-        self.model.load_state_dict(torch.load(model_path))
+        self.mod.load_models(model_path)
         
         legacy_avg_acc = list()
         acc_per_epoch = { i: torch.FloatTensor().to(_CG.DEVICE) for i in range(len(self.test_info.info_dict.keys())) }
@@ -198,7 +196,6 @@ class ProtoRoutine(TrainTest):
 
         n_way, k_support, k_query = (self._model_config.fsl.test_n_way, self._model_config.fsl.test_k_shot_s, self._model_config.fsl.test_k_shot_q)
         
-        self.model.eval()
         self.mod.eval()
         with torch.no_grad():
             for epoch in tqdm(range(10)):
@@ -206,7 +203,7 @@ class ProtoRoutine(TrainTest):
                 score_per_class = { i: torch.FloatTensor().to(_CG.DEVICE) for i in range(len(self.test_info.info_dict.keys())) }
                 for x, y in testloader:
                     x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
-                    y_pred = self.model(x)
+                    y_pred = self.mod.base_model(x)
 
                     # (overall accuracy [legacy], accuracy per class)
                     legacy_acc, acc_vals = tr.proto_test(y_pred, target=y, n_way=n_way, n_support=k_support, n_query=k_query, enhance=self.mod, sqrt_eucl=True)
