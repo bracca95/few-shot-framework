@@ -11,7 +11,7 @@ from typing import Optional, List, Tuple
 from src.models.model import Model
 from src.models.FSL.ProtoNet.distance_module import DistScale
 from src.models.FSL.ProtoNet.proto_batch_sampler import PrototypicalBatchSampler
-from src.models.FSL.ProtoNet.proto_loss import ProtoTools, TestResult
+from src.models.FSL.ProtoNet.proto_loss import ProtoTools, ProtoLoss, TestResult
 from src.models.FSL.ProtoNet.proto_extra_modules import ProtoEnhancements
 from src.train_test.routine import TrainTest
 from src.utils.tools import Tools, Logger
@@ -73,6 +73,7 @@ class ProtoRoutine(TrainTest):
         )
         
         train_loss = []
+        train_loss_p1 = []
         train_acc = []
         val_loss = []
         val_acc = []
@@ -98,19 +99,23 @@ class ProtoRoutine(TrainTest):
             self.mod.train()
             for x, y in tqdm(trainloader):
                 optim.zero_grad()
+                criterion = ProtoLoss(self.mod, sqrt_eucl=True)
                 x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
                 model_output = self.mod.base_model(x)
-                loss, acc = ProtoTools.proto_loss(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query, enhance=self.mod, sqrt_eucl=True)
+                criterion.compute_loss(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query)
+                loss, acc = (criterion.loss, criterion.acc)
                 loss.backward()
                 optim.step()
                 train_loss.append(loss.item())
+                train_loss_p1.append(criterion.loss_dict["contrastive_loss"].item())
                 train_acc.append(acc.item())
             
             avg_loss = np.mean(train_loss[-self._model_config.fsl.episodes:])
+            avg_loss_p1 = np.mean(train_loss_p1[-self._model_config.fsl.episodes:])
             avg_acc = np.mean(train_acc[-self._model_config.fsl.episodes:])
             lr_scheduler.step()
             
-            Logger.instance().debug(f"Avg Train Loss: {avg_loss}, Avg Train Acc: {avg_acc}")
+            Logger.instance().debug(f"p1_loss: {avg_loss_p1}, Avg Train Loss: {avg_loss}, Avg Train Acc: {avg_acc}")
 
             # save model
             if avg_acc >= best_acc:
@@ -158,9 +163,11 @@ class ProtoRoutine(TrainTest):
         self.mod.eval()
         with torch.no_grad():
             for x, y in valloader:
+                criterion = ProtoLoss(self.mod, sqrt_eucl=True)
                 x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
                 model_output = self.mod.base_model(x)
-                loss, acc = ProtoTools.proto_loss(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query, enhance=self.mod, sqrt_eucl=True)
+                criterion.compute_loss(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query)
+                loss, acc = (criterion.loss, criterion.acc)
                 val_loss.append(loss.item())
                 val_acc.append(acc.item())
             avg_loss_eval = np.mean(val_loss[-episodes:])

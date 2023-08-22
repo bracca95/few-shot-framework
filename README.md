@@ -33,7 +33,7 @@ Your own dataset can be built by inheriting from the abstract class `CustomDatas
   "test_n_way": int,
   "test_k_shot_s": int,
   "test_k_shot_q": int,
-  "enhancement": Optional[str]. { "ipn", "dist_of_dists" }
+  "enhancement": Optional[str]. { "ipn", "dist_of_dists", "apn" }
 ```
 
 ### Train/Test

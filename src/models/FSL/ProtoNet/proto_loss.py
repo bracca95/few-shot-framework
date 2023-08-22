@@ -13,17 +13,28 @@ class ProtoTools:
     @staticmethod
     def euclidean_dist(x: torch.Tensor, y: torch.Tensor, sqrt: bool=True) -> torch.Tensor:
         """Compute euclidean distance between two tensors
+
+        The size has a unique constraint the fact that `d` (feature vector length must be the same). This function can
+        be applied to compare queries to class prototypes, or to compare distances between query pairs. In the latter
+        case, N = M
         
         Args:
-            x (torch.Tensor) of size N x D
-            y (torch.Tensor) of size M x D
+            x (torch.Tensor): size N x D
+            y (torch.Tensor): size M x D
+            sqrt (bool): use square rooted distance 
+
+        Returns:
+            torch.Tensor
+
+        Raises:
+            ValueError if `d` for tensor `x` differs from `d` of tensor `y`
         """
         
         n = x.size(0)
         m = y.size(0)
         d = x.size(1)
         if d != y.size(1):
-            raise Exception
+            raise ValueError(f"Tensor shapes must be the same in -1: x: {x.shape}, y: {y.shape}")
 
         x = x.unsqueeze(1).expand(n, m, d)
         y = y.unsqueeze(0).expand(n, m, d)
@@ -32,6 +43,22 @@ class ProtoTools:
         
         if sqrt: return torch.sqrt(square_dist)
         return square_dist
+
+    @staticmethod
+    def split_batch(img: torch.Tensor, labels: torch.Tensor, n_way: int, n_support: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        # the sampler is supposed to ensure class correctness (i.e. number of unique classes == n_way)
+        classes = torch.unique(labels)
+
+        # supposing n_way is shared for support and query (may not be the case)
+        n_query = labels.size(0) // n_way - n_support
+        class_idx = torch.stack(list(map(lambda x: torch.where(labels == x)[0], classes)))
+        support_idxs, query_idxs = torch.split(class_idx, [n_support, n_query], dim=1)
+
+        support_set = img[support_idxs.flatten()]
+        query_set = img[query_idxs.flatten()]
+
+        # support_batch, support_label, query_batch, query_label
+        return support_set, support_idxs.flatten(), query_set, query_idxs.flatten()
     
     @staticmethod
     def split_support_query(recons: torch.Tensor, target: torch.Tensor, n_way: int, n_support: int, n_query: int) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -77,14 +104,40 @@ class ProtoTools:
         else:
             pass
         
-        return dists 
+        return dists
     
-    @staticmethod
-    def proto_loss(recons: torch.Tensor, target: torch.Tensor, n_way: int, n_support: int, n_query: int, 
-                   enhance: ProtoEnhancements, sqrt_eucl: bool
-                   ) -> Tuple[torch.Tensor, torch.Tensor]:
+
+class ProtoLoss:
+
+    def __init__(self, enhance: ProtoEnhancements, sqrt_eucl: bool):
+        self.enhance = enhance
+        self.sqrt_eucl = sqrt_eucl
+
+        self.acc: torch.Tensor = torch.FloatTensor([]).to(_CG.DEVICE)
+        self.proto_loss: torch.Tensor = torch.FloatTensor([]).to(_CG.DEVICE)
+        self.contrastive_loss: Optional[torch.Tensor] = None
+
+        # must be updated
+        self.loss: torch.Tensor = self.__init_loss()
+        self.loss_dict: dict = self.__init_loss_dict()
+
+    def compute_loss(self, recons: torch.Tensor, target: torch.Tensor, n_way: int, n_support: int, n_query: int):
         s_batch, q_batch = ProtoTools.split_support_query(recons, target, n_way, n_support, n_query)
-        dists = ProtoTools.get_dists(s_batch, q_batch, enhance, sqrt_eucl=sqrt_eucl)
+        
+        if self.enhance.name == "apn":
+            self.contrastive_loss = self._contrastive_loss(s_batch.view(n_way * n_support, -1), n_way, n_support)
+
+        loss, self.acc = self._proto_loss(s_batch, q_batch, n_way, n_query)
+        
+        # udpate value
+        self.loss = loss
+        self.loss_dict["proto_loss"] = loss
+        if self.contrastive_loss is not None:
+            self.loss = loss + self.contrastive_loss
+            self.loss_dict["contrastive_loss"] = self.contrastive_loss
+
+    def _proto_loss(self, s_batch: torch.Tensor, q_batch: torch.Tensor, n_way: int, n_query: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        dists = ProtoTools.get_dists(s_batch, q_batch, self.enhance, sqrt_eucl=self.sqrt_eucl)
 
         log_p_y = F.log_softmax(-dists, dim=1).view(n_way, n_query, -1)
         target_inds = torch.arange(0, n_way).to(_CG.DEVICE)
@@ -96,6 +149,44 @@ class ProtoTools:
         acc_val = y_hat.eq(target_inds.squeeze(2)).float().mean()
 
         return loss_val, acc_val
+
+    def _contrastive_loss(self, xs_emb: torch.Tensor, n_classes: int, n_support: int) -> torch.Tensor:
+        dists = ProtoTools.euclidean_dist(xs_emb, xs_emb, sqrt=False)
+        dists = dists.triu(diagonal=1) # distance is symmetric, remove them to not compute twice
+
+        if dists.size(0) != dists.size(1) != n_classes * n_support:
+            raise ValueError(f"Tensor must be square-shaped. Found t = {dists.shape}, N = {n_classes} * K = {n_support}")
+
+        r = torch.arange(n_classes * n_support).to(_CG.DEVICE)
+
+        ## numerator
+        numerator_select = r.view(-1, n_support).unsqueeze(1).expand(n_classes, n_support, -1)
+        numerator = dists.view(n_classes, n_support, -1).gather(2, numerator_select)
+        positive_pairs = torch.mean(torch.sum(torch.sum(numerator, dim=-1), dim=-1))
+
+        ## denominator: normalize out of the same class
+        den_idxs = r.view(-1, n_classes * n_support).unsqueeze(1).expand(n_classes, n_support, n_classes * n_support)
+        mask = ~torch.any(numerator_select.view(n_classes, n_support, n_support, 1) == den_idxs.view(n_classes, n_support, 1, n_classes * n_support), dim=2)
+        den_select = torch.masked_select(den_idxs, mask).view(n_classes, n_support, -1)
+        den_elems = dists.view(n_classes, n_support, -1).gather(2, den_select)
+        negative_pairs = torch.mean(torch.sum(torch.sum(den_elems, dim=-1), dim=-1)[:-1])
+
+        loss = positive_pairs + torch.max(torch.Tensor([.0]).to(_CG.DEVICE), torch.Tensor([0.5]).to(_CG.DEVICE) - negative_pairs)
+
+        return loss
+    
+    def __init_loss(self):
+        return torch.FloatTensor([]).to(_CG.DEVICE)
+
+    def __init_loss_dict(self):
+        # mandatory
+        loss_dict = { "proto_loss": self.proto_loss}
+        
+        # optional entries
+        if self.contrastive_loss is not None:
+            loss_dict["contrastive_loss"] = self.contrastive_loss
+
+        return loss_dict
 
 
 class TestResult:
