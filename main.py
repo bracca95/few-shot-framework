@@ -35,12 +35,13 @@ if __name__=="__main__":
 
     try:
         dataset = DatasetBuilder.load_dataset(config.dataset)
+        dataset.save_sample_image_batch(dataset, os.path.join(os.getcwd(), "output"))
     except ValueError as ve:
         Logger.instance().critical(ve.args)
         sys.exit(-1)
 
     # compute mean and variance of the dataset if not done yet
-    if config.dataset.dataset_mean is None and config.dataset.dataset_std is None:
+    if config.dataset.dataset_mean is None and config.dataset.dataset_std is None and config.dataset.dataset_type != "omniglot":
         Logger.instance().warning("No mean and std set: computing and storing values.")
         mean, std = dataset.compute_mean_std(dataset)
         config.dataset.dataset_mean = mean.tolist()

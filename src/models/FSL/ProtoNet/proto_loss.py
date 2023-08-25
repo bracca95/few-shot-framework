@@ -179,7 +179,7 @@ class ProtoLoss:
         # https://github.com/KevinMusgrave/pytorch-metric-learning/issues/14#issuecomment-952603383
         #xs_emb = xs_emb / torch.norm(xs_emb, dim=-1, keepdim=True)
 
-        dists_full = ProtoTools.euclidean_dist(xs_emb, xs_emb, sqrt=self.sqrt_eucl) # HERE
+        dists_full = ProtoTools.euclidean_dist(xs_emb, xs_emb, sqrt=self.sqrt_eucl)
         cosine_dists = ProtoTools.cosine_distance(xs_emb, xs_emb)
         
         dists = cosine_dists.triu(diagonal=1) # distance is symmetric, remove them to not compute twice
@@ -207,11 +207,16 @@ class ProtoLoss:
         rand_start = torch.randint(0, denominator.size(0) - numerator.size(0), (1,)).item()
         sample_den = denominator[rand_start : rand_start + numerator.size(0)]
         
-        positive_pairs = torch.pow(numerator.sum(dim=-1), 2)
-        negative_pairs = sample_den.sum(dim=-1)
-        neg_margin = torch.pow(torch.max(ProtoTools.ZERO, ProtoTools.MARGIN - negative_pairs), 2)
+        # positive_pairs = torch.pow(numerator.sum(dim=-1), 2)
+        # negative_pairs = sample_den.sum(dim=-1)
+        # neg_margin = torch.pow(torch.max(ProtoTools.ZERO, ProtoTools.MARGIN - negative_pairs), 2)
 
-        loss = torch.div((positive_pairs + neg_margin), 2 * numerator.size(0))
+        # loss = torch.div((positive_pairs + neg_margin), 2 * numerator.size(0))
+
+        p = torch.pow(numerator, 2)
+        n = torch.pow(torch.max(ProtoTools.ZERO, ProtoTools.MARGIN - sample_den), 2)
+        tot = p + n
+        loss = torch.div(tot.sum(dim=-1), 2 * numerator.size(0))
 
         return loss
     

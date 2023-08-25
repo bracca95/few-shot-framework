@@ -12,7 +12,7 @@ Your own dataset can be built by inheriting from the abstract class `CustomDatas
 ### Dataset
 ```
 "dataset_path": str. Path to the dataset,
-"dataset_type": {`opt6`, `opt_bckg`, `binary`, `qplusv1`, `qplusv2`},
+"dataset_type": {`opt6`, `opt_bckg`, `binary`, `qplusv1`, `qplusv2`, `omniglot`},
 "dataset_splits": List[float] (1 for train/test (e.g. [0.8]), 3 for train/val/test),
 "crop_size": int,
 "image_size": int. Reshape to image_size,

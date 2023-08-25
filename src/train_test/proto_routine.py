@@ -113,7 +113,7 @@ class ProtoRoutine(TrainTest):
             lr_scheduler.step()
             
             Logger.instance().debug(", ".join(f"{k}: {v}" for k, v in avg_loss.items()))
-            Logger.instance().debug(f"Avg validation accuracy: {avg_acc}")
+            Logger.instance().debug(f"Avg train accuracy: {avg_acc}")
 
             # save model
             if avg_acc >= best_acc:
@@ -172,7 +172,7 @@ class ProtoRoutine(TrainTest):
             avg_acc_eval = np.mean(val_acc[-episodes:])
 
         Logger.instance().debug(", ".join(f"{k}: {v}" for k, v in avg_loss_eval.items()))
-        Logger.instance().debug(f"Avg train accuracy: {avg_acc_eval}")
+        Logger.instance().debug(f"Avg validation accuracy: {avg_acc_eval}")
 
         return avg_loss_eval, avg_acc_eval
 
