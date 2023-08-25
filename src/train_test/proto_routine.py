@@ -72,10 +72,9 @@ class ProtoRoutine(TrainTest):
             step_size=self.lr_scheduler_step
         )
         
-        train_loss = []
-        train_loss_p1 = []
+        train_loss = { }
         train_acc = []
-        val_loss = []
+        val_loss = { }
         val_acc = []
         best_acc: float = 0.0
         best_loss = float("inf")
@@ -106,16 +105,15 @@ class ProtoRoutine(TrainTest):
                 loss, acc = (criterion.loss, criterion.acc)
                 loss.backward()
                 optim.step()
-                train_loss.append(loss.item())
-                train_loss_p1.append(criterion.loss_dict["contrastive_loss"].item())
+                ProtoLoss.append_epoch_loss(train_loss, criterion.loss_dict)
                 train_acc.append(acc.item())
             
-            avg_loss = np.mean(train_loss[-self._model_config.fsl.episodes:])
-            avg_loss_p1 = np.mean(train_loss_p1[-self._model_config.fsl.episodes:])
+            avg_loss = { k: np.mean(v[-self._model_config.fsl.episodes:]) for k, v in train_loss.items() }
             avg_acc = np.mean(train_acc[-self._model_config.fsl.episodes:])
             lr_scheduler.step()
             
-            Logger.instance().debug(f"p1_loss: {avg_loss_p1}, Avg Train Loss: {avg_loss}, Avg Train Acc: {avg_acc}")
+            Logger.instance().debug(", ".join(f"{k}: {v}" for k, v in avg_loss.items()))
+            Logger.instance().debug(f"Avg validation accuracy: {avg_acc}")
 
             # save model
             if avg_acc >= best_acc:
@@ -123,11 +121,11 @@ class ProtoRoutine(TrainTest):
                 best_acc = avg_acc
                 self.mod.save_models(best_model_path)
 
-            if avg_loss < best_loss:
-                best_loss = avg_loss
+            if avg_loss["total_loss"] < best_loss:
+                best_loss = avg_loss["total_loss"]
             
             # wandb
-            wdb_dict = { "train_loss": avg_loss, "train_acc": avg_acc }
+            wdb_dict = { "train_loss": avg_loss["total_loss"], "train_acc": avg_acc }
 
             ## VALIDATION
             if valloader is not None:
@@ -155,7 +153,7 @@ class ProtoRoutine(TrainTest):
 
                 return
 
-    def validate(self, val_config: Tuple, valloader: DataLoader, val_loss: List[float], val_acc: List[float]):
+    def validate(self, val_config: Tuple, valloader: DataLoader, val_loss: dict, val_acc: List[float]):
         Logger.instance().debug("Validating!")
 
         n_way, k_support, k_query, episodes = (val_config)
@@ -167,13 +165,14 @@ class ProtoRoutine(TrainTest):
                 x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
                 model_output = self.mod.base_model(x)
                 criterion.compute_loss(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query)
-                loss, acc = (criterion.loss, criterion.acc)
-                val_loss.append(loss.item())
+                _, acc = (criterion.loss, criterion.acc)
+                ProtoLoss.append_epoch_loss(val_loss, criterion.loss_dict)
                 val_acc.append(acc.item())
-            avg_loss_eval = np.mean(val_loss[-episodes:])
+            avg_loss_eval = { k: np.mean(v[-episodes:]) for k, v in val_loss.items() }
             avg_acc_eval = np.mean(val_acc[-episodes:])
 
-        Logger.instance().debug(f"Avg Val Loss: {avg_loss_eval}, Avg Val Acc: {avg_acc_eval}")
+        Logger.instance().debug(", ".join(f"{k}: {v}" for k, v in avg_loss_eval.items()))
+        Logger.instance().debug(f"Avg train accuracy: {avg_acc_eval}")
 
         return avg_loss_eval, avg_acc_eval
 

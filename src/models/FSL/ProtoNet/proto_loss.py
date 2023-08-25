@@ -10,6 +10,9 @@ from lib.glass_defect_dataset.config.consts import General as _CG
 
 class ProtoTools:
 
+    ZERO = torch.Tensor([.0]).to(_CG.DEVICE)
+    MARGIN = torch.Tensor([.2]).to(_CG.DEVICE)
+
     @staticmethod
     def euclidean_dist(x: torch.Tensor, y: torch.Tensor, sqrt: bool=True) -> torch.Tensor:
         """Compute euclidean distance between two tensors
@@ -43,6 +46,25 @@ class ProtoTools:
         
         if sqrt: return torch.sqrt(square_dist)
         return square_dist
+    
+    @staticmethod
+    def cosine_distance(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        n = x.size(0)
+        m = y.size(0)
+        d = x.size(1)
+        if d != y.size(1):
+            raise ValueError(f"Tensor shapes must be the same in -1: x: {x.shape}, y: {y.shape}")
+
+        x = x.unsqueeze(1).expand(n, m, d)
+        y = y.unsqueeze(0).expand(n, m, d)
+
+        # floating point arithmetic fix
+        sim = torch.nn.CosineSimilarity(dim=-1)(x, y)
+        dist = torch.ones_like(sim) - sim
+        mask = torch.isclose(dist, ProtoTools.ZERO, rtol=0, atol=1e-6)
+        dist[mask] = 0.0
+
+        return dist
 
     @staticmethod
     def split_batch(img: torch.Tensor, labels: torch.Tensor, n_way: int, n_support: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -124,7 +146,7 @@ class ProtoLoss:
     def compute_loss(self, recons: torch.Tensor, target: torch.Tensor, n_way: int, n_support: int, n_query: int):
         s_batch, q_batch = ProtoTools.split_support_query(recons, target, n_way, n_support, n_query)
         
-        if self.enhance.name == "apn":
+        if self.enhance.name == ProtoEnhancements.MOD_APN:
             self.contrastive_loss = self._contrastive_loss(s_batch.view(n_way * n_support, -1), n_way, n_support)
 
         loss, self.acc = self._proto_loss(s_batch, q_batch, n_way, n_query)
@@ -135,6 +157,9 @@ class ProtoLoss:
         if self.contrastive_loss is not None:
             self.loss = loss + self.contrastive_loss
             self.loss_dict["contrastive_loss"] = self.contrastive_loss
+        
+        # final
+        self.loss_dict["total_loss"] = self.loss
 
     def _proto_loss(self, s_batch: torch.Tensor, q_batch: torch.Tensor, n_way: int, n_query: int) -> Tuple[torch.Tensor, torch.Tensor]:
         dists = ProtoTools.get_dists(s_batch, q_batch, self.enhance, sqrt_eucl=self.sqrt_eucl)
@@ -151,8 +176,14 @@ class ProtoLoss:
         return loss_val, acc_val
 
     def _contrastive_loss(self, xs_emb: torch.Tensor, n_classes: int, n_support: int) -> torch.Tensor:
-        dists = ProtoTools.euclidean_dist(xs_emb, xs_emb, sqrt=False)
-        dists = dists.triu(diagonal=1) # distance is symmetric, remove them to not compute twice
+        # https://github.com/KevinMusgrave/pytorch-metric-learning/issues/14#issuecomment-952603383
+        #xs_emb = xs_emb / torch.norm(xs_emb, dim=-1, keepdim=True)
+
+        dists_full = ProtoTools.euclidean_dist(xs_emb, xs_emb, sqrt=self.sqrt_eucl) # HERE
+        cosine_dists = ProtoTools.cosine_distance(xs_emb, xs_emb)
+        
+        dists = cosine_dists.triu(diagonal=1) # distance is symmetric, remove them to not compute twice
+        #dists = dists_full.triu(diagonal=1)
 
         if dists.size(0) != dists.size(1) != n_classes * n_support:
             raise ValueError(f"Tensor must be square-shaped. Found t = {dists.shape}, N = {n_classes} * K = {n_support}")
@@ -161,17 +192,26 @@ class ProtoLoss:
 
         ## numerator
         numerator_select = r.view(-1, n_support).unsqueeze(1).expand(n_classes, n_support, -1)
-        numerator = dists.view(n_classes, n_support, -1).gather(2, numerator_select)
-        positive_pairs = torch.mean(torch.sum(torch.sum(numerator, dim=-1), dim=-1))
+        numerator_sym = dists.view(n_classes, n_support, -1).gather(2, numerator_select)
+        numerator_mask = torch.triu(torch.ones_like(numerator_select), diagonal=1).bool()
+        numerator = numerator_sym[numerator_mask]
 
-        ## denominator: normalize out of the same class
-        den_idxs = r.view(-1, n_classes * n_support).unsqueeze(1).expand(n_classes, n_support, n_classes * n_support)
-        mask = ~torch.any(numerator_select.view(n_classes, n_support, n_support, 1) == den_idxs.view(n_classes, n_support, 1, n_classes * n_support), dim=2)
-        den_select = torch.masked_select(den_idxs, mask).view(n_classes, n_support, -1)
-        den_elems = dists.view(n_classes, n_support, -1).gather(2, den_select)
-        negative_pairs = torch.mean(torch.sum(torch.sum(den_elems, dim=-1), dim=-1)[:-1])
+        ## denominator
+        all_idxs = r.view(-1, n_classes * n_support).unsqueeze(1).expand(n_classes, n_support, n_classes * n_support)
+        mask = ~torch.any(numerator_select.view(n_classes, n_support, n_support, 1) == all_idxs.view(n_classes, n_support, 1, n_classes * n_support), dim=2)
+        mask_sym = torch.triu(torch.ones_like(dists), diagonal=1).bool().view(n_classes, n_support, -1)
+        final_mask = mask & mask_sym
+        denominator = dists.view(n_classes, n_support, -1)[final_mask]
 
-        loss = positive_pairs + torch.max(torch.Tensor([.0]).to(_CG.DEVICE), torch.Tensor([0.5]).to(_CG.DEVICE) - negative_pairs)
+        # we want a balance for the number of positive and negative pairs, so sample n_support comparison
+        rand_start = torch.randint(0, denominator.size(0) - numerator.size(0), (1,)).item()
+        sample_den = denominator[rand_start : rand_start + numerator.size(0)]
+        
+        positive_pairs = torch.pow(numerator.sum(dim=-1), 2)
+        negative_pairs = sample_den.sum(dim=-1)
+        neg_margin = torch.pow(torch.max(ProtoTools.ZERO, ProtoTools.MARGIN - negative_pairs), 2)
+
+        loss = torch.div((positive_pairs + neg_margin), 2 * numerator.size(0))
 
         return loss
     
@@ -187,6 +227,13 @@ class ProtoLoss:
             loss_dict["contrastive_loss"] = self.contrastive_loss
 
         return loss_dict
+    
+    @staticmethod
+    def append_epoch_loss(train_loss: dict, current_loss: dict):
+        if len(train_loss) == 0:
+            train_loss.update({ k: [] for k in current_loss.keys() })
+
+        [ train_loss[k].append(v.item()) for k, v in current_loss.items() ]
 
 
 class TestResult:
