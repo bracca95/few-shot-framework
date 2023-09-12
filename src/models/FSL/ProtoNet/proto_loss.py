@@ -42,7 +42,7 @@ class ProtoTools:
         x = x.unsqueeze(1).expand(n, m, d)
         y = y.unsqueeze(0).expand(n, m, d)
 
-        square_dist = torch.pow(x - y, 2).sum(2)
+        square_dist = torch.pow(x - y + 1e-6, 2).sum(2)
         
         if sqrt: return torch.sqrt(square_dist)
         return square_dist
@@ -58,13 +58,8 @@ class ProtoTools:
         x = x.unsqueeze(1).expand(n, m, d)
         y = y.unsqueeze(0).expand(n, m, d)
 
-        # floating point arithmetic fix
         sim = torch.nn.CosineSimilarity(dim=-1)(x, y)
-        dist = torch.ones_like(sim) - sim
-        mask = torch.isclose(dist, ProtoTools.ZERO, rtol=0, atol=1e-6)
-        dist[mask] = 0.0
-
-        return dist
+        return 1 - sim
 
     @staticmethod
     def split_batch(img: torch.Tensor, labels: torch.Tensor, n_way: int, n_support: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -147,7 +142,7 @@ class ProtoLoss:
         s_batch, q_batch = ProtoTools.split_support_query(recons, target, n_way, n_support, n_query)
         
         if self.enhance.name == ProtoEnhancements.MOD_APN:
-            self.contrastive_loss = self._contrastive_loss(s_batch.view(n_way * n_support, -1), n_way, n_support)
+            self.contrastive_loss = self._lifted_structured_loss(s_batch.view(n_way * n_support, -1), n_way, n_support)
 
         loss, self.acc = self._proto_loss(s_batch, q_batch, n_way, n_query)
         
@@ -177,13 +172,14 @@ class ProtoLoss:
 
     def _contrastive_loss(self, xs_emb: torch.Tensor, n_classes: int, n_support: int) -> torch.Tensor:
         # https://github.com/KevinMusgrave/pytorch-metric-learning/issues/14#issuecomment-952603383
-        #xs_emb = xs_emb / torch.norm(xs_emb, dim=-1, keepdim=True)
+        norm_emb = xs_emb / torch.linalg.norm(xs_emb, dim=-1, ord=2, keepdim=True)
+        # norm_emb = (xs_emb - xs_emb.mean()) / xs_emb.std()
 
-        dists_full = ProtoTools.euclidean_dist(xs_emb, xs_emb, sqrt=self.sqrt_eucl)
-        cosine_dists = ProtoTools.cosine_distance(xs_emb, xs_emb)
+        dists_full = ProtoTools.euclidean_dist(norm_emb, norm_emb, sqrt=self.sqrt_eucl)
+        dists = dists_full.triu(diagonal=1)
         
-        dists = cosine_dists.triu(diagonal=1) # distance is symmetric, remove them to not compute twice
-        #dists = dists_full.triu(diagonal=1)
+        #cosine_dists = ProtoTools.cosine_distance(norm_emb, norm_emb)
+        #dists = cosine_dists.triu(diagonal=1) # distance is symmetric, remove them to not compute twice
 
         if dists.size(0) != dists.size(1) != n_classes * n_support:
             raise ValueError(f"Tensor must be square-shaped. Found t = {dists.shape}, N = {n_classes} * K = {n_support}")
@@ -216,8 +212,51 @@ class ProtoLoss:
         p = torch.pow(numerator, 2)
         n = torch.pow(torch.max(ProtoTools.ZERO, ProtoTools.MARGIN - sample_den), 2)
         tot = p + n
-        loss = torch.div(tot.sum(dim=-1), 2 * numerator.size(0))
+        loss = torch.div(tot.sum(dim=-1), numerator.size(0))    # do not divide by 2 as I used half of the distance matrix
 
+        return loss
+    
+    def _lifted_structured_loss(self, xs_emb: torch.Tensor, n_classes: int, n_support: int) -> torch.Tensor:
+        #norm_emb = xs_emb / torch.linalg.norm(xs_emb, dim=-1, ord=2, keepdim=True)                     # L2 row-vector norm
+        norm_emb = (xs_emb - xs_emb.mean()) / xs_emb.std()                                              # z-score normalization aka standardization
+        # norm_emb = torch.div(xs_emb - torch.min(xs_emb), torch.max(xs_emb) - torch.min(xs_emb))       # classic normalization formula
+        
+        dists = ProtoTools.euclidean_dist(norm_emb, norm_emb, sqrt=self.sqrt_eucl)
+        
+        if dists.size(0) != dists.size(1) != n_classes * n_support:
+            raise ValueError(f"Tensor must be square-shaped. Found t = {dists.shape}, N = {n_classes} * K = {n_support}")
+
+        r = torch.arange(n_classes * n_support).to(_CG.DEVICE)
+
+        ## numerator
+        numerator_select = r.view(-1, n_support).unsqueeze(1).expand(n_classes, n_support, -1)
+        numerator = dists.view(n_classes, n_support, -1).gather(2, numerator_select)
+
+        ## denominator: normalize out of the same class
+        all_idxs = r.view(-1, n_classes * n_support).unsqueeze(1).expand(n_classes, n_support, n_classes * n_support)
+        mask = ~torch.any(numerator_select.view(n_classes, n_support, n_support, 1) == all_idxs.view(n_classes, n_support, 1, n_classes * n_support), dim=2)
+        den_select = torch.masked_select(all_idxs, mask).view(n_classes, n_support, -1)
+        den_elems = dists.view(n_classes, n_support, -1).gather(2, den_select)
+
+        """brutal way
+            result = torch.empty_like(numerator)
+            for c in range(numerator.size(0)):
+                for i in range(numerator.size(1)):
+                    for j in range(numerator.size(1)):
+                        if i == j: continue
+                        neg = torch.log(torch.sum(torch.exp((ProtoTools.MARGIN - den_elems[c][i]))) + torch.sum(torch.exp((ProtoTools.MARGIN - den_elems[c][j]))))
+                        result[c][i][j] = numerator[c][i][j] + neg
+        """
+        
+        exp_neg = torch.exp(ProtoTools.MARGIN - den_elems)
+        sum_exp_neg = exp_neg.sum(dim=2)
+        neg_broadcasted = sum_exp_neg.unsqueeze(1) + sum_exp_neg.unsqueeze(2)
+        result = numerator + torch.log(neg_broadcasted)
+        
+        # remove self comparison
+        result = result * (1+1e-6 - torch.eye(result.size(1)).to(_CG.DEVICE))
+        
+        loss = torch.div(torch.sum(torch.pow(torch.max(ProtoTools.ZERO, result), 2)), 2 * torch.numel(numerator))
         return loss
     
     def __init_loss(self):

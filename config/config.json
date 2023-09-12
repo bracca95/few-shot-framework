@@ -19,10 +19,10 @@
         "model_name": "default",
         "fsl": {
             "episodes": 100,
-            "train_n_way": 12,
+            "train_n_way": 20,
             "train_k_shot_s": 3,
             "train_k_shot_q": 2,
-            "test_n_way": 12,
+            "test_n_way": 20,
             "test_k_shot_s": 3,
             "test_k_shot_q": 2,
             "enhancement": "apn"

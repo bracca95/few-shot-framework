@@ -18,7 +18,7 @@ class ModelBuilder:
         if "compare" in model_name:
             model_name_stripped = model_name.replace("compare", "")
             if model_name_stripped == "cnn":
-                extractor = extractor = CNN(config)
+                extractor = CNN(config)
             elif model_name_stripped == "cnn105":
                 extractor = CNN105(config)
             elif model_name_stripped in ("resnet50", "hrnet_w18", "vit_tiny_patch16_224"):
