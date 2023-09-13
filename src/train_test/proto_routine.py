@@ -45,7 +45,8 @@ class ProtoRoutine(TrainTest):
         if any(map(lambda x: x < min_req, current_subset.info_dict.values())):
             raise ValueError(f"at least one class has not enough elements {(min_req)}. Check {current_subset.info_dict}")
         
-        label_list = [self.dataset[idx][1] for idx in current_subset.subset.indices]
+        idxs = torch.LongTensor(current_subset.subset.indices)
+        label_list = torch.IntTensor(current_subset.subset.dataset.label_list)[idxs].tolist()
         if split_set == self.train_str:
             num_samples = self._model_config.fsl.train_k_shot_s + self._model_config.fsl.train_k_shot_q
         else:

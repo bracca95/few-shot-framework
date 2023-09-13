@@ -22,10 +22,11 @@ class ModelBuilder:
             elif model_name_stripped == "cnn105":
                 extractor = CNN105(config)
             elif model_name_stripped in ("resnet50", "hrnet_w18", "vit_tiny_patch16_224"):
+                in_channels = 1 if config.dataset.dataset_mean is None else len(config.dataset.dataset_mean)
                 extractor = TimmFeatureExtractor(
                     config,
                     model_name_stripped,
-                    in_chans=1,
+                    in_chans=in_channels,
                     pooled=True,
                     mean=config.dataset.dataset_mean,
                     std=config.dataset.dataset_std
@@ -44,10 +45,11 @@ class ModelBuilder:
         if model_name == "cnn105":
             return CNN105(config)
         if model_name in ("resnet50", "hrnet_w18", "vit_tiny_patch16_224"):
+            in_channels = 1 if config.dataset.dataset_mean is None else len(config.dataset.dataset_mean)
             return TimmFeatureExtractor(
                 config,
                 model_name,
-                in_chans=1,
+                in_chans=in_channels,
                 pooled=True,
                 mean=config.dataset.dataset_mean,
                 std=config.dataset.dataset_std
@@ -56,6 +58,6 @@ class ModelBuilder:
         # if the inserted string is wrong
         raise ValueError(
             f"fsl.model must be" +
-            f"{ {'proto_default', 'mlp', 'cnn', 'cnn105', 'resnet50', 'hrnet_w18', 'vit_tiny_patch16_224'} }" +
+            f"{ {'default', 'mlp', 'cnn', 'cnn105', 'resnet50', 'hrnet_w18', 'vit_tiny_patch16_224'} }" +
             f"or compare variants. You wrote: {config.model.model_name}"
         )

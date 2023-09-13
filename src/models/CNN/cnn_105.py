@@ -8,9 +8,10 @@ class CNN105(Model):
 
     def __init__(self, config: Config):
         super().__init__(config)
+        in_chans = 1 if config.dataset.dataset_mean is None else len(config.dataset.dataset_mean)
 
         self.seq1 = nn.Sequential(
-            nn.Conv2d(in_channels=1, out_channels=8, kernel_size=5, stride=1, padding=2),
+            nn.Conv2d(in_channels=in_chans, out_channels=8, kernel_size=5, stride=1, padding=2),
             nn.BatchNorm2d(8),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2)
