@@ -41,7 +41,7 @@ class ProtoRoutine(TrainTest):
         if current_subset.subset is None:
             return None
         
-        min_req = self._model_config.fsl.test_k_shot_q + self._model_config.fsl.train_k_shot_s
+        min_req = self._model_config.fsl.train_k_shot_s + self._model_config.fsl.train_k_shot_q
         if any(map(lambda x: x < min_req, current_subset.info_dict.values())):
             raise ValueError(f"at least one class has not enough elements {(min_req)}. Check {current_subset.info_dict}")
         
