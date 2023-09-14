@@ -1,4 +1,4 @@
-# Baseline Project for Defect Views dataset
+# Baseline for Few-Shot-Learning models and comparison
 
 ## Dataset
 Your own dataset can be built by inheriting from the abstract class `CustomDataset` in `src.dataset.dataset`
