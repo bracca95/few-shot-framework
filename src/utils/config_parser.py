@@ -127,7 +127,7 @@ class Model:
             sys.exit(-1)
 
         Logger.instance().info(f"model_name: {model_name}, freeze: {freeze} fsl: {fsl}")
-        return Model(model_name, fsl)
+        return Model(model_name, freeze, fsl)
     
     def serialize(self) -> dict:
         result: dict = {}

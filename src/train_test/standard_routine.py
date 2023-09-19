@@ -88,6 +88,9 @@ class StandardRoutine(TrainTest):
             epoch_loss = epoch_loss / len(trainloader)
             epoch_acc = epoch_acc / len(trainloader)
 
+            Logger.instance().debug("=================================================================")
+            Logger.instance().debug(f"Epoch {eidx} :: loss: {epoch_loss}, accuracy: {epoch_acc}")
+
             if epoch_acc > best_acc and epoch > 0:
                 best_acc = epoch_acc
                 torch.save(self.model.state_dict(), best_model_path)
@@ -157,9 +160,6 @@ class StandardRoutine(TrainTest):
     
     def test(self, model_path: str):
         Logger.instance().debug("Start testing")
-        
-        if self._model_config.fsl is None:
-            raise ValueError(f"missing field `fsl` in config.json")
         
         try:
             model_path = Tools.validate_path(model_path)
