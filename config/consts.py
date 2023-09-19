@@ -9,6 +9,7 @@ class ConfigConst:
 
 class ModelConfig:
     CONFIG_MODEL_NAME = "model_name"
+    CONFIG_FREEZE = "freeze"
     CONFIG_FSL = "fsl"
 
 class FSLConsts:

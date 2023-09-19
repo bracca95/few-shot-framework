@@ -26,6 +26,7 @@ Your own dataset can be built by inheriting from the abstract class `CustomDatas
 ### Model
 ```
 "model": { "default", "mlp", "cnn", "cnn105", "resnet50", "hrnet_w18", "vit_tiny_patch16_224" } and compare version,
+"freeze": bool (freeze feature extractor parameters),
 "fsl": Optional if ProtoNet is required (the model must not contain 'compare' in its name)
   "episodes": int,
   "train_n_way": int,

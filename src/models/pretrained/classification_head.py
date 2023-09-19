@@ -7,12 +7,12 @@ from src.utils.config_parser import Config
 
 class Head(Model):
 
-    def __init__(self, config: Config, extractor: Model, out_class: int, freeze: bool = False):
+    def __init__(self, config: Config, extractor: Model, out_class: int):
         super().__init__(config)
 
         self.extractor = extractor
         backbone_features: int = self.extractor.get_out_size(1)
-        if freeze:
+        if config.model.freeze:
             Logger.instance().debug("freezing extractor layers")
             list(map(lambda param: setattr(param, 'requires_grad', False), self.extractor.parameters()))
 
