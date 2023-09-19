@@ -1,14 +1,14 @@
 {
-    "experiment_name": "two_channels",
+    "experiment_name": "disabled",
     "dataset": {
-        "dataset_path": "/media/lorenzo/M/datasets/dmx_2c/views_opt",
-        "dataset_type": "opt_double",
+        "dataset_path": "/media/lorenzo/M/datasets/dmx_2c/views_qplus",
+        "dataset_type": "qplus_double",
         "dataset_splits": [
             0.7,
             0.0,
             0.3
         ],
-        "crop_size": 60,
+        "crop_size": 105,
         "image_size": 105,
         "augment_online": null,
         "augment_offline": null,
@@ -19,12 +19,12 @@
         "model_name": "default",
         "fsl": {
             "episodes": 100,
-            "train_n_way": 4,
+            "train_n_way": 7,
             "train_k_shot_s": 5,
             "train_k_shot_q": 5,
-            "test_n_way": 4,
+            "test_n_way": 7,
             "test_k_shot_s": 5,
-            "test_k_shot_q": 5,
+            "test_k_shot_q": 3,
             "enhancement": null
         }
     },

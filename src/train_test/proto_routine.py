@@ -41,9 +41,17 @@ class ProtoRoutine(TrainTest):
         if current_subset.subset is None:
             return None
         
-        min_req = self._model_config.fsl.train_k_shot_s + self._model_config.fsl.train_k_shot_q
+        train_str, val_str, test_str = _CG.DEFAULT_SUBSETS
+        if split_set == train_str or split_set == val_str:
+            min_req = self._model_config.fsl.train_k_shot_s + self._model_config.fsl.train_k_shot_q
+        if split_set == test_str:
+            min_req = self._model_config.fsl.test_k_shot_s + self._model_config.fsl.test_k_shot_q
+        
         if any(map(lambda x: x < min_req, current_subset.info_dict.values())):
-            raise ValueError(f"at least one class has not enough elements {(min_req)}. Check {current_subset.info_dict}")
+            if split_set == val_str:
+                Logger.instance().error(f"Skip validation! Val set has not enough elements in some class. Check train s+q config.")
+                return None
+            raise ValueError(f"At least one class has not enough elements {(min_req)}. Check {current_subset.info_dict}")
         
         idxs = torch.LongTensor(current_subset.subset.indices)
         label_list = torch.IntTensor(current_subset.subset.dataset.label_list)[idxs].tolist()
@@ -236,7 +244,7 @@ class ProtoRoutine(TrainTest):
         legacy_avg_acc = np.mean(legacy_avg_acc)
         Logger.instance().debug(f"Legacy test accuracy: {legacy_avg_acc}")
 
-        if self._model_config.fsl.test_n_way == len(self.dataset.label_to_idx.keys()) and len(tr_max.target_inds) != 0 and len(tr_max.y_hat) != 0:
+        if self._model_config.fsl.test_n_way == len(self.test_info.info_dict.keys()) and len(tr_max.target_inds) != 0 and len(tr_max.y_hat) != 0:
             y_true = tr_max.target_inds
             preds = tr_max.y_hat
             wandb.log({
