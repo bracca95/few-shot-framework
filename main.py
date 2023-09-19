@@ -41,7 +41,7 @@ if __name__=="__main__":
         sys.exit(-1)
 
     # compute mean and variance of the dataset if not done yet
-    if config.dataset.dataset_mean is None and config.dataset.dataset_std is None and config.dataset.dataset_type != "omniglot":
+    if config.dataset.normalize and config.dataset.dataset_mean is None and config.dataset.dataset_std is None:
         Logger.instance().warning("No mean and std set: computing and storing values.")
         mean, std = dataset.compute_mean_std(dataset)
         config.dataset.dataset_mean = mean.tolist()

@@ -14,6 +14,7 @@ Your own dataset can be built by inheriting from the abstract class `CustomDatas
 "dataset_path": str. Path to the dataset,
 "dataset_type": {`opt6`, `opt_bckg`, `opt_double` `binary`, `qplusv1`, `qplusv2`, `qplus_double` `omniglot`, `miniimagenet`},
 "dataset_splits": List[float] (1 for train/test (e.g. [0.8]), 3 for train/val/test),
+"normalize": bool,
 "crop_size": int,
 "image_size": int. Reshape to image_size,
 "augment_online": List[str] (classes that undergo online augmentation),

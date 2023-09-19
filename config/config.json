@@ -8,12 +8,19 @@
             0.0,
             0.3
         ],
+        "normalize": true,
         "crop_size": 105,
         "image_size": 105,
         "augment_online": null,
         "augment_offline": null,
-        "dataset_mean": null,
-        "dataset_std": null
+        "dataset_mean": [
+            0.692292332649231,
+            0.004705358762294054
+        ],
+        "dataset_std": [
+            0.05495953559875488,
+            0.022113554179668427
+        ]
     },
     "model": {
         "model_name": "default",
