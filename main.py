@@ -4,6 +4,7 @@ import torch
 import wandb
 import random
 import numpy as np
+import argparse
 
 from src.models.model_utils import ModelBuilder
 from src.train_test.routine_utils import RoutineBuilder
@@ -26,9 +27,13 @@ torch.backends.cudnn.deterministic = True
 # online augmentation
 #############
 
-if __name__=="__main__":
+parser = argparse.ArgumentParser()
+parser.add_argument("--config_file", nargs="?", type=str, default=None)
+args = vars(parser.parse_args())
+
+def main(config_path: str):
     try:
-        config = read_from_json("config/config.json")
+        config = read_from_json(config_path)
     except Exception as e:
         Logger.instance().critical(e.args)
         sys.exit(-1)
@@ -46,8 +51,11 @@ if __name__=="__main__":
         mean, std = dataset.compute_mean_std(dataset)
         config.dataset.dataset_mean = mean.tolist()
         config.dataset.dataset_std = std.tolist()
-        write_to_json(config, os.getcwd(), "config/config.json")
-        sys.exit(0)
+        write_to_json(config, os.getcwd(), config_path)
+        
+        # reload
+        config = read_from_json(config_path)
+        dataset = DatasetBuilder.load_dataset(config.dataset)
 
     ## start program
     wandb_mode = "disabled" if config.experiment_name == "disabled" else "online"
@@ -82,3 +90,8 @@ if __name__=="__main__":
 
     wandb.save("log.log")
     wandb.finish()
+
+if __name__=="__main__":
+    config_file_path = args["config_file"] if args["config_file"] is not None else "config/config.json"
+    Logger.instance().debug(f"config file located at {config_file_path}")
+    main(config_file_path)
