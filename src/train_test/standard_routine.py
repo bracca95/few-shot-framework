@@ -29,6 +29,20 @@ class StandardRoutine(TrainTest):
         top_pred = y_pred.argmax(1, keepdim=True)           # select the max class (the one with the highest score)
         correct = top_pred.eq(y.view_as(top_pred)).sum()    # count the number of correct predictions
         return correct.float() / y.shape[0]                 # compute percentage of correct predictions (accuracy score)
+
+    @staticmethod
+    def class_accuracies(cls_acc_dict: dict, batch_labels: torch.Tensor, batch_pred_idx: torch.Tensor) -> dict:
+        for cls_label in torch.unique(batch_labels):
+            mask = batch_labels == cls_label
+            tot_samples = mask.sum().item()
+            correct_preds = (batch_pred_idx[mask] == batch_labels[mask]).sum().item()
+            # accuracy = correct_preds / tot_samples  # if tot_samples > 0 else 0.0 # tot_samples cannot be 0
+
+            # sum existing values
+            c = cls_label.item()
+            cls_acc_dict[c] = [cls_acc_dict[c][0] + correct_preds, cls_acc_dict[c][1] + tot_samples]
+
+        return cls_acc_dict
     
     def init_loader(self, split_set: str):
         current_subset = self.dataset.get_subset_info(split_set)
@@ -169,6 +183,12 @@ class StandardRoutine(TrainTest):
 
         self.model.load_state_dict(torch.load(model_path))
         testloader = self.init_loader(self.test_str)
+
+        # load labels for class accuracies
+        current_subset = self.dataset.subsets_dict[self.test_str]
+        idxs = torch.LongTensor(current_subset.indices)
+        label_list = torch.IntTensor(current_subset.dataset.label_list)[idxs]
+        classes = torch.unique(label_list)
         
         self.model.eval()
         with torch.no_grad():
@@ -177,6 +197,7 @@ class StandardRoutine(TrainTest):
             all_labels = torch.Tensor([]).to(_CG.DEVICE)
             all_cls_idxs = torch.Tensor([]).to(_CG.DEVICE)
             all_pred_vals = torch.Tensor([]).to(_CG.DEVICE)
+            cls_acc_dict = { c.item(): [0, 0] for c in classes }
             for images, labels in testloader:
                 images = images.to(_CG.DEVICE)
                 labels = labels.to(_CG.DEVICE)
@@ -190,6 +211,7 @@ class StandardRoutine(TrainTest):
                 # accuracy
                 tot_samples += labels.size(0)
                 tot_correct += n_correct
+                cls_acc_dict = self.class_accuracies(cls_acc_dict, labels.view_as(top_pred_idx), top_pred_idx)
 
                 # wandb
                 all_labels = torch.cat((all_labels, labels), dim=0)
@@ -213,4 +235,7 @@ class StandardRoutine(TrainTest):
             })
 
             acc = tot_correct / tot_samples
+            class_accuracy = { self.dataset.idx_to_label[c.item()]: cls_acc_dict[c.item()][0] / cls_acc_dict[c.item()][1] for c in classes }
+
+            Logger.instance().debug(f"Accuracy for each class: {class_accuracy}")
             Logger.instance().debug(f"Test accuracy on {len(self.test_info.subset.indices)} images: {acc:.3f}")

@@ -8,6 +8,7 @@ output/
 # specific files
 .DS_Store
 processed_json.json
+unit_test/*.json
 
 # extensions
 *.log

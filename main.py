@@ -88,7 +88,7 @@ def main(config_path: str):
     model_path = config.train_test.model_test_path if config.train_test.model_test_path is not None else model_path
     routine.test(model_path)
 
-    wandb.save("log.log")
+    wandb.save("output/log.log")
     wandb.finish()
 
 if __name__=="__main__":
