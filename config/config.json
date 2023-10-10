@@ -1,29 +1,23 @@
 {
     "experiment_name": "disabled",
     "dataset": {
-        "dataset_path": "/media/lorenzo/M/datasets/dmx_2c/views_qplus",
-        "dataset_type": "qplus_double",
+        "dataset_path": "/media/lorenzo/M/datasets/dataset_opt/",
+        "dataset_type": "opt_yolo_test",
         "dataset_splits": [
             0.7,
-            0.0,
-            0.3
+            0.1,
+            0.2
         ],
         "normalize": true,
         "crop_size": 105,
-        "image_size": 105,
+        "image_size": 640,
         "augment_online": null,
         "augment_offline": null,
-        "dataset_mean": [
-            0.692292332649231,
-            0.004705358762294054
-        ],
-        "dataset_std": [
-            0.05495953559875488,
-            0.022113554179668427
-        ]
+        "dataset_mean": null,
+        "dataset_std": null
     },
     "model": {
-        "model_name": "default",
+        "model_name": "yolov8s",
         "freeze": false,
         "fsl": {
             "episodes": 100,
@@ -38,8 +32,8 @@
     },
     "train_test": {
         "epochs": 100,
-        "batch_size": 32,
-        "model_test_path": null,
+        "batch_size": 6,
+        "model_test_path": "output/best.pt",
         "learning_rate": null,
         "optimizer": null
     }

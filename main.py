@@ -6,9 +6,9 @@ import random
 import numpy as np
 import argparse
 
-from src.models.model_utils import ModelBuilder
+from src.models.model_utils import ModelBuilder, YoloModelBuilder
 from src.train_test.routine_utils import RoutineBuilder
-from lib.glass_defect_dataset.src.datasets.dataset_utils import DatasetBuilder
+from lib.glass_defect_dataset.src.datasets.dataset_utils import DatasetBuilder, YoloDatasetBuilder
 from src.utils.config_parser import Model as ModelConfig
 from src.utils.config_parser import Config, read_from_json, write_to_json
 from src.utils.tools import Logger
@@ -31,12 +31,24 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--config_file", nargs="?", type=str, default=None)
 args = vars(parser.parse_args())
 
+def run_yolo(config: Config):
+    dataset = YoloDatasetBuilder.load_dataset(config.dataset)
+    model = YoloModelBuilder.load_model(config)
+
+    model.execute(dataset)
+
 def main(config_path: str):
     try:
         config = read_from_json(config_path)
     except Exception as e:
         Logger.instance().critical(e.args)
         sys.exit(-1)
+
+    # check if YOLO
+    if "yolo" in config.dataset.dataset_type:
+        run_yolo(config)
+        Logger.instance().debug(f"YOLO ended its execution. Quitting...")
+        sys.exit(0)
 
     try:
         dataset = DatasetBuilder.load_dataset(config.dataset)

@@ -1,3 +1,5 @@
+from typing import Union
+
 from src.models.model import Model
 from src.models.MLP.mlp_basic import MLP
 from src.models.CNN.cnn_basic import CNN
@@ -5,7 +7,9 @@ from src.models.CNN.cnn_105 import CNN105
 from src.models.FSL.ProtoNet.protonet import ProtoNet
 from src.models.pretrained.extractors import TimmFeatureExtractor
 from src.models.pretrained.classification_head import Head
+from src.models.yolov8 import YoloTrain, YoloInference
 from src.utils.config_parser import Config
+from src.utils.tools import Logger
     
 
 class ModelBuilder:
@@ -57,7 +61,27 @@ class ModelBuilder:
         
         # if the inserted string is wrong
         raise ValueError(
-            f"fsl.model must be" +
+            f"model must be" +
             f"{ {'default', 'mlp', 'cnn', 'cnn105', 'resnet50', 'hrnet_w18', 'vit_tiny_patch16_224'} }" +
             f"or compare variants. You wrote: {config.model.model_name}"
         )
+    
+
+class YoloModelBuilder:
+
+    @staticmethod
+    def load_model(config: Config) -> Union[YoloTrain, YoloInference]:
+        if config.dataset.dataset_type == "opt_yolo_train":
+            Logger.instance().debug(f"Loading YoloTrain")
+            return YoloTrain(config)
+        elif config.dataset.dataset_type == "opt_yolo_test":
+            if config.train_test.model_test_path is None:
+                raise ValueError(f"If dataset is `opt_yolo_test`, specify a pre-trained model in model_test_path")
+            Logger.instance().debug(f"Loading YoloInference")
+            return YoloInference(config)
+        else:
+            raise ValueError(f"model must be" +
+            "{'default', 'mlp', 'cnn', 'cnn105', 'resnet50', 'hrnet_w18', 'vit_tiny_patch16_224'}" +
+            f"or compare variants. You wrote: {config.model.model_name}\n" +
+            "For Yolo use {'opt_yolo_train', 'opt_yolo_test} in dataset.dataset_type!"
+            )
