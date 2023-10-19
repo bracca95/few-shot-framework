@@ -21,9 +21,19 @@ class TimmFeatureExtractor(Model):
         https://stackoverflow.com/a/62118437
     """
 
-    def __init__(self, config: Config, name: str, in_chans: int, pooled: bool, mean: Optional[List[float]]=None, std: Optional[List[float]]=None):
+    def __init__(
+            self,
+            config: Config,
+            name: str,
+            pretrained: bool,
+            in_chans: int,
+            pooled: bool,
+            mean: Optional[List[float]]=None,
+            std: Optional[List[float]]=None
+        ):
         super().__init__(config)
         self.name = name
+        self.pretrained = pretrained
         self.in_chans = in_chans
         self.pooled = pooled
         self.mean = mean
@@ -31,9 +41,9 @@ class TimmFeatureExtractor(Model):
 
         # most likely to be true in our case
         if self.pooled:
-            self.m = timm.create_model(self.name, pretrained=True, in_chans=self.in_chans, num_classes=0)
+            self.m = timm.create_model(self.name, pretrained=self.pretrained, in_chans=self.in_chans, num_classes=0)
         else:
-            self.m = timm.create_model(self.name, pretrained=True, in_chans=self.in_chans, num_classes=0, global_pool='')
+            self.m = timm.create_model(self.name, pretrained=self.pretrained, in_chans=self.in_chans, num_classes=0, global_pool='')
 
         Logger.instance().debug(f"model info: {self.m.default_cfg}")
 

@@ -37,8 +37,10 @@ class ProtoEnhancements:
 
         if self.name == self.MOD_IPN:
             if not self.fsl_config.train_n_way == self.fsl_config.test_n_way:
-                raise ValueError(f"For distance scaling train/test n_way must be equal " +
-                                 f"({self.fsl_config.train_n_way} != {self.fsl_config.test_n_way})")
+                raise ValueError(
+                    f"For distance scaling train/test n_way must be equal " +
+                    f"({self.fsl_config.train_n_way} != {self.fsl_config.test_n_way})"
+                )
             n_way = self.fsl_config.train_n_way
             module_list.append(DistScale(n_way * n_way, n_way).to(_CG.DEVICE))
         else:
@@ -68,7 +70,7 @@ class ProtoEnhancements:
         This methods wraps the eval() settings for torch for the main model and, if needed, for the additional modules
         """
 
-        self.base_model.train()
+        self.base_model.eval()
 
         for module in self.module_list:
             if module is None:

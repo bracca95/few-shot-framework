@@ -73,8 +73,11 @@ class ProtoRoutine(TrainTest):
 
         trainloader = self.init_loader(self.train_str)
         valloader = self.init_loader(self.val_str)
-        
-        optim = torch.optim.Adam(params=self.model.parameters(), lr=self.learning_rate)
+
+        optim_param = [{ "params": self.mod.base_model.parameters() }]
+        optim_param.append({"params": e.parameters() for e in self.mod.module_list if e is not None})
+        optim_param = [o for o in optim_param if o]
+        optim = torch.optim.Adam(params=optim_param, lr=self.learning_rate)
         lr_scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer=optim,
             gamma=self.lr_scheduler_gamma,

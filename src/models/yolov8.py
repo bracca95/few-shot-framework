@@ -185,7 +185,7 @@ class YoloInference:
                             bottom = math.ceil(bottom * self.SAVE_IMG_SIZE / SinglePlate.UPSCALE)
                             draw.rectangle((left, top, right, bottom), outline=det_color, width=1)
                             draw.text((left, top-20), f"{boxes_conf[box]:.2f}", fill=det_color)
-                        #img_jpg.save(img_path)    
+                        img_jpg.save(img_path)    
 
                     # ground truth
                     if patch[patch_idx].defects is not None:

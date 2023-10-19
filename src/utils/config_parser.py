@@ -113,6 +113,7 @@ class Fsl:
 class Model:
     model_name: str = _CG.DEFAULT_STR
     freeze: bool = _CG.DEFAULT_BOOL
+    pretrained: bool = _CG.DEFAULT_BOOL
     fsl: Optional[Fsl] = None
 
     @classmethod
@@ -121,19 +122,21 @@ class Model:
             Tools.check_instance(obj, dict)
             model_name = from_str(obj.get(_CM.CONFIG_MODEL_NAME))
             freeze = from_bool(obj.get(_CM.CONFIG_FREEZE))
+            pretrained = from_bool(obj.get(_CM.CONFIG_PRETRAINED))
             fsl = from_union([from_none, Fsl.deserialize], obj.get(_CM.CONFIG_FSL))
         except TypeError as te:
             Logger.instance().error(te.args)
             sys.exit(-1)
 
-        Logger.instance().info(f"model_name: {model_name}, freeze: {freeze} fsl: {fsl}")
-        return Model(model_name, freeze, fsl)
+        Logger.instance().info(f"model_name: {model_name}, freeze: {freeze}, pretrain: {pretrained}, fsl: {fsl}")
+        return Model(model_name, freeze, pretrained, fsl)
     
     def serialize(self) -> dict:
         result: dict = {}
 
         result[_CM.CONFIG_MODEL_NAME] = from_str(self.model_name)
         result[_CM.CONFIG_FREEZE] = from_bool(self.freeze)
+        result[_CM.CONFIG_PRETRAINED] = from_bool(self.pretrained)
         result[_CM.CONFIG_FSL] = from_union([lambda x: to_class(Fsl, x), from_none], self.fsl)
 
         Logger.instance().info(f"Model serialized {result}")

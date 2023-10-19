@@ -1,5 +1,17 @@
 # Baseline for Few-Shot-Learning models and comparison
 
+## Preliminaries
+This repo contains a subrepo (`lib`). Download with:
+```bash
+$ git clone --recurse-submodules <project-link>
+```
+
+If you have already downloaded the repo without the `recurse-submodule` instruction, you can still get it with:
+```bash
+$ git submodule init
+```
+in the main project directory.
+
 ## Dataset
 Your own dataset can be built by inheriting from the abstract class `CustomDataset` in `src.dataset.dataset`
 
