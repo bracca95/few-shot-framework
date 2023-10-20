@@ -42,9 +42,9 @@ class ProtoRoutine(TrainTest):
             return None
         
         train_str, val_str, test_str = _CG.DEFAULT_SUBSETS
-        if split_set == train_str or split_set == val_str:
+        if split_set == train_str:
             min_req = self._model_config.fsl.train_k_shot_s + self._model_config.fsl.train_k_shot_q
-        if split_set == test_str:
+        else:
             min_req = self._model_config.fsl.test_k_shot_s + self._model_config.fsl.test_k_shot_q
         
         if any(map(lambda x: x < min_req, current_subset.info_dict.values())):
@@ -103,7 +103,7 @@ class ProtoRoutine(TrainTest):
 
         fsl_cfg = self._model_config.fsl
         n_way, k_support, k_query = (fsl_cfg.train_n_way, fsl_cfg.train_k_shot_s, fsl_cfg.train_k_shot_q)
-        val_config = (fsl_cfg.train_n_way, fsl_cfg.train_k_shot_s, fsl_cfg.train_k_shot_q, fsl_cfg.episodes)
+        val_config = (fsl_cfg.test_n_way, fsl_cfg.test_k_shot_s, fsl_cfg.test_k_shot_q, fsl_cfg.episodes)
 
         for eidx, epoch in enumerate(range(self.train_test_config.epochs)):
             Logger.instance().debug(f"=== Epoch: {epoch} ===")
@@ -155,7 +155,7 @@ class ProtoRoutine(TrainTest):
             wandb.log(wdb_dict)
 
             # stop conditions and save last model
-            if eidx == self.train_test_config.epochs-1 or self.check_stop_conditions(best_acc):
+            if eidx == self.train_test_config.epochs-1 or self.check_stop_conditions(avg_loss["total_loss"], best_acc):
                 pth_path = last_val_model_path if valloader is not None else last_model_path
                 Logger.instance().debug(f"STOP: saving last epoch model named `{os.path.basename(pth_path)}`")
                 self.mod.save_models(pth_path)

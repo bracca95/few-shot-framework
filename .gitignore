@@ -7,6 +7,7 @@ output/
 
 # specific files
 .DS_Store
+nohup.out
 processed_json.json
 unit_test/*.json
 

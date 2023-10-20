@@ -35,6 +35,7 @@ class YoloTrain:
         SeeAlso:
             https://docs.ultralytics.com/usage/cfg/#train
             https://github.com/ultralytics/ultralytics/issues/981
+            https://docs.ultralytics.com/models/yolov8/#supported-modes
         """
 
         Logger.instance().debug(f"Performing yolo train and test")

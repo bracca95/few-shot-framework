@@ -35,7 +35,11 @@ class TrainTest(ABC):
     def test(self, model_path: str):
         ...
 
-    def check_stop_conditions(self, curr_acc: float, limit: float = 0.985, eps: float = 0.001) -> bool:
+    def check_stop_conditions(self, loss: float, curr_acc: float, limit: float = 0.985, eps: float = 0.001) -> bool:
+        if torch.isnan(torch.tensor(loss)).item():
+            Logger.instance().error(f"Raised stop conditions because loss is NaN")
+            return True
+
         if curr_acc < limit:
             return False
         
@@ -49,6 +53,10 @@ class TrainTest(ABC):
         acc_var = torch.Tensor(list(self.acc_var))
         if torch.max(acc_var) - torch.min(acc_var) > 2 * eps:
             return False
+        
+        if torch.max(acc_var) > 0.999:
+            Logger.instance().warning(f"Accuracy is 1.0: hit stop conditions")
+            return True
         
         Logger.instance().warning(f"Raised stop condition: last {len(self.acc_var)} increment below {2 * eps}")
         return True

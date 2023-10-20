@@ -30,6 +30,7 @@ class ModelBuilder:
                 extractor = TimmFeatureExtractor(
                     config,
                     model_name_stripped,
+                    pretrained=config.model.pretrained,
                     in_chans=in_channels,
                     pooled=True,
                     mean=config.dataset.dataset_mean,
@@ -53,6 +54,7 @@ class ModelBuilder:
             return TimmFeatureExtractor(
                 config,
                 model_name,
+                pretrained=config.model.pretrained,
                 in_chans=in_channels,
                 pooled=True,
                 mean=config.dataset.dataset_mean,
