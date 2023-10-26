@@ -22,6 +22,8 @@ from lib.glass_defect_dataset.config.consts import General as _CG
 
 class ProtoRoutine(TrainTest):
 
+    W_LOSS = False
+
     def __init__(self, train_test_config: TrainTestConfig, model: Model, dataset: CustomDataset):
         super().__init__(train_test_config, model, dataset)
         self.learning_rate = 0.001
@@ -105,15 +107,15 @@ class ProtoRoutine(TrainTest):
         n_way, k_support, k_query = (fsl_cfg.train_n_way, fsl_cfg.train_k_shot_s, fsl_cfg.train_k_shot_q)
         val_config = (fsl_cfg.test_n_way, fsl_cfg.test_k_shot_s, fsl_cfg.test_k_shot_q, fsl_cfg.episodes)
 
-        for eidx, epoch in enumerate(range(self.train_test_config.epochs)):
+        for epoch in range(self.train_test_config.epochs):
             Logger.instance().debug(f"=== Epoch: {epoch} ===")
             self.mod.train()
             for x, y in tqdm(trainloader):
                 optim.zero_grad()
-                criterion = ProtoLoss(self.mod, sqrt_eucl=True)
+                criterion = ProtoLoss(self.mod, sqrt_eucl=True, tot_epochs=self.train_test_config.epochs, weighted=self.W_LOSS)
                 x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
                 model_output = self.mod.base_model(x)
-                criterion.compute_loss(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query)
+                criterion.compute_loss(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query, epoch=epoch)
                 loss, acc = (criterion.loss, criterion.acc)
                 loss.backward()
                 optim.step()
@@ -141,7 +143,7 @@ class ProtoRoutine(TrainTest):
 
             ## VALIDATION
             if valloader is not None:
-                avg_loss_eval, avg_acc_eval = self.validate(val_config, valloader, val_loss, val_acc)
+                avg_loss_eval, avg_acc_eval = self.validate(val_config, valloader, epoch, val_loss, val_acc)
                 if avg_acc_eval >= best_acc:
                     Logger.instance().debug(f"Found the best evaluation model at epoch {epoch}!")
                     self.mod.save_models(val_model_path)
@@ -155,7 +157,7 @@ class ProtoRoutine(TrainTest):
             wandb.log(wdb_dict)
 
             # stop conditions and save last model
-            if eidx == self.train_test_config.epochs-1 or self.check_stop_conditions(avg_loss["total_loss"], best_acc):
+            if epoch == self.train_test_config.epochs-1 or self.check_stop_conditions(avg_loss["total_loss"], best_acc):
                 pth_path = last_val_model_path if valloader is not None else last_model_path
                 Logger.instance().debug(f"STOP: saving last epoch model named `{os.path.basename(pth_path)}`")
                 self.mod.save_models(pth_path)
@@ -165,7 +167,7 @@ class ProtoRoutine(TrainTest):
 
                 return
 
-    def validate(self, val_config: Tuple, valloader: DataLoader, val_loss: dict, val_acc: List[float]):
+    def validate(self, val_config: Tuple, valloader: DataLoader, epoch: int, val_loss: dict, val_acc: List[float]):
         Logger.instance().debug("Validating!")
 
         n_way, k_support, k_query, episodes = (val_config)
@@ -173,10 +175,10 @@ class ProtoRoutine(TrainTest):
         self.mod.eval()
         with torch.no_grad():
             for x, y in valloader:
-                criterion = ProtoLoss(self.mod, sqrt_eucl=True)
+                criterion = ProtoLoss(self.mod, sqrt_eucl=True, tot_epochs=self.train_test_config.epochs, weighted=self.W_LOSS)
                 x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
                 model_output = self.mod.base_model(x)
-                criterion.compute_loss(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query)
+                criterion.compute_loss(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query, epoch=epoch)
                 _, acc = (criterion.loss, criterion.acc)
                 ProtoLoss.append_epoch_loss(val_loss, criterion.loss_dict)
                 val_acc.append(acc.item())

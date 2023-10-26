@@ -11,8 +11,7 @@ from lib.glass_defect_dataset.config.consts import General as _CG
 
 class ProtoTools:
 
-    ZERO = torch.Tensor([.0]).to(_CG.DEVICE)
-    MARGIN = torch.Tensor([.2]).to(_CG.DEVICE)
+    ZERO = torch.tensor(0.0, dtype=torch.float, device=_CG.DEVICE, requires_grad=False)
 
     @staticmethod
     def euclidean_dist(x: torch.Tensor, y: torch.Tensor, sqrt: bool=True) -> torch.Tensor:
@@ -42,10 +41,12 @@ class ProtoTools:
 
         x = x.unsqueeze(1).expand(n, m, d)
         y = y.unsqueeze(0).expand(n, m, d)
-
-        square_dist = torch.pow(x - y + 1e-6, 2).sum(2)
+        square_dist = torch.pow(x - y, 2).sum(2)
         
-        if sqrt: return torch.sqrt(square_dist)
+        if sqrt:
+            square_dist = square_dist + 1e-6
+            return torch.sqrt(square_dist)
+        
         return square_dist
     
     @staticmethod
@@ -127,10 +128,19 @@ class ProtoTools:
 
 class ProtoLoss:
 
-    def __init__(self, enhance: ProtoEnhancements, sqrt_eucl: bool):
+    GAMMA = 0.5
+    MARGIN = torch.tensor(1.0, dtype=torch.float, device=_CG.DEVICE, requires_grad=False)
+
+    def __init__(self, enhance: ProtoEnhancements, sqrt_eucl: bool, tot_epochs: int, weighted: bool):
         self.enhance = enhance
         self.sqrt_eucl = sqrt_eucl
+        self.weighted = weighted
 
+        # not used in test, but making it Optional would complicate things
+        first_half = torch.linspace(1e-6, ProtoLoss.GAMMA, tot_epochs // 2)
+        second_half = torch.full((tot_epochs - len(first_half),), ProtoLoss.GAMMA)
+        self.gammas = torch.cat((first_half, second_half))
+        
         self.acc: torch.Tensor = torch.FloatTensor([]).to(_CG.DEVICE)
         self.proto_loss: torch.Tensor = torch.FloatTensor([]).to(_CG.DEVICE)
         self.contrastive_loss: Optional[torch.Tensor] = None
@@ -139,20 +149,28 @@ class ProtoLoss:
         self.loss: torch.Tensor = self.__init_loss()
         self.loss_dict: dict = self.__init_loss_dict()
 
-    def compute_loss(self, recons: torch.Tensor, target: torch.Tensor, n_way: int, n_support: int, n_query: int):
+    def compute_loss(self, recons: torch.Tensor, target: torch.Tensor, n_way: int, n_support: int, n_query: int, epoch: int):
         s_batch, q_batch = ProtoTools.split_support_query(recons, target, n_way, n_support, n_query)
         
+        ## compute required losses 
+        # contrastive (lifted-structured) loss
         if self.enhance.name == ProtoEnhancements.MOD_APN:
             self.contrastive_loss = self._lifted_structured_loss(s_batch.view(n_way * n_support, -1), n_way, n_support)
-
-        loss, self.acc = self._proto_loss(s_batch, q_batch, n_way, n_query)
-        
-        # udpate value
-        self.loss = loss
-        self.loss_dict["proto_loss"] = loss
-        if self.contrastive_loss is not None:
-            self.loss = loss + self.contrastive_loss
             self.loss_dict["contrastive_loss"] = self.contrastive_loss
+
+        # prototypical loss
+        self.proto_loss, self.acc = self._proto_loss(s_batch, q_batch, n_way, n_query)
+        self.loss_dict["proto_loss"] = self.proto_loss
+        ##
+
+        # udpate values
+        self.loss = self.proto_loss
+        if self.contrastive_loss is not None:
+            if self.weighted:
+                gamma = self.gammas[epoch]
+                self.loss = ((1.0 - gamma) * self.proto_loss) + (gamma * self.contrastive_loss)
+            else:
+                self.loss = self.proto_loss + self.contrastive_loss
         
         # final
         self.loss_dict["total_loss"] = self.loss
@@ -206,20 +224,21 @@ class ProtoLoss:
         
         # positive_pairs = torch.pow(numerator.sum(dim=-1), 2)
         # negative_pairs = sample_den.sum(dim=-1)
-        # neg_margin = torch.pow(torch.max(ProtoTools.ZERO, ProtoTools.MARGIN - negative_pairs), 2)
+        # neg_margin = torch.pow(torch.max(ProtoTools.ZERO, ProtoLoss.MARGIN - negative_pairs), 2)
 
         # loss = torch.div((positive_pairs + neg_margin), 2 * numerator.size(0))
 
         p = torch.pow(numerator, 2)
-        n = torch.pow(torch.max(ProtoTools.ZERO, ProtoTools.MARGIN - sample_den), 2)
+        n = torch.pow(torch.max(ProtoTools.ZERO, ProtoLoss.MARGIN - sample_den), 2)
         tot = p + n
         loss = torch.div(tot.sum(dim=-1), numerator.size(0))    # do not divide by 2 as I used half of the distance matrix
 
         return loss
     
     def _lifted_structured_loss(self, xs_emb: torch.Tensor, n_classes: int, n_support: int) -> torch.Tensor:
-        #norm_emb = xs_emb / torch.linalg.norm(xs_emb, dim=-1, ord=2, keepdim=True)                     # L2 row-vector norm
-        norm_emb = (xs_emb - xs_emb.mean()) / xs_emb.std()                                              # z-score normalization aka standardization
+        # norm_emb = xs_emb / torch.linalg.norm(xs_emb, dim=-1, ord=2, keepdim=True)                    # L2 row-vector norm
+        norm_emb = (xs_emb - xs_emb.mean()) / (xs_emb.std() + 1e-6)                                     # z-score normalization aka standardization (batch-norm)
+        # norm_emb = xs_emb / torch.linalg.matrix_norm(xs_emb, ord='fro')                               # matrix norm
         # norm_emb = torch.div(xs_emb - torch.min(xs_emb), torch.max(xs_emb) - torch.min(xs_emb))       # classic normalization formula
         
         dists = ProtoTools.euclidean_dist(norm_emb, norm_emb, sqrt=self.sqrt_eucl)
@@ -245,11 +264,11 @@ class ProtoLoss:
                 for i in range(numerator.size(1)):
                     for j in range(numerator.size(1)):
                         if i == j: continue
-                        neg = torch.log(torch.sum(torch.exp((ProtoTools.MARGIN - den_elems[c][i]))) + torch.sum(torch.exp((ProtoTools.MARGIN - den_elems[c][j]))))
+                        neg = torch.log(torch.sum(torch.exp((ProtoLoss.MARGIN - den_elems[c][i]))) + torch.sum(torch.exp((ProtoLoss.MARGIN - den_elems[c][j]))))
                         result[c][i][j] = numerator[c][i][j] + neg
         """
         
-        exp_neg = torch.exp(ProtoTools.MARGIN - den_elems)
+        exp_neg = torch.exp(ProtoLoss.MARGIN - den_elems)
         sum_exp_neg = exp_neg.sum(dim=2)
         neg_broadcasted = sum_exp_neg.unsqueeze(1) + sum_exp_neg.unsqueeze(2)
         result = numerator + torch.log(neg_broadcasted)
