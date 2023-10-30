@@ -1,6 +1,6 @@
 import torch
 
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 from torch.nn import functional as F
 from torch.nn.modules import Module
 
@@ -327,3 +327,102 @@ class TestResult:
         self.target_inds = torch.cat((self.target_inds, target_inds.flatten()))
 
         return acc_overall, { v: acc_vals[i] for i, v in enumerate(mapping.values()) }
+    
+
+class InferenceResult:
+
+    COL_PATH = "path"
+    COL_CLASS = "class"
+    COL_PREDICT = "predict"
+
+    def __init__(
+            self,
+            enhance: ProtoEnhancements,
+            s_emb: torch.Tensor,
+            n_way: int,
+            k_shot_s: int,
+            dim: int,
+            idx_to_label: dict,
+            sqrt_eucl: bool
+        ):
+        import pandas as pd
+
+        self.model = enhance
+        self.s_emb = s_emb
+        self.n_way = n_way
+        self.k_shot_s = k_shot_s
+        self.dim = dim
+        self.idx_to_label = idx_to_label
+        self.sqrt_eucl = sqrt_eucl
+
+        # overall values
+        self.path: List[str] = list()
+        self.y = torch.tensor([], dtype=torch.float, device=_CG.DEVICE, requires_grad=False)
+        self.y_hat = torch.tensor([], dtype=torch.float, device=_CG.DEVICE, requires_grad=False)
+        self.table = pd.DataFrame(columns=[self.COL_PATH, self.COL_CLASS, self.COL_PREDICT])
+
+    def proto_inference(self, query_loader):
+        # load all queries in batches
+        for qx, qy, path in query_loader:
+            qx, qy = qx.to(_CG.DEVICE), qy.to(_CG.DEVICE)
+            q_emb = self.model.base_model(qx)
+
+            # manage last batch (likely to have less samples than n_way * k_shot and we do not want padding)
+            s_emb = self.s_emb.view(self.n_way, self.k_shot_s, -1)
+            if q_emb.size(0) % self.n_way == 0:
+                q_emb = q_emb.view(self.n_way, -1, self.dim)
+            else:
+                q_emb = q_emb.view(-1, q_emb.size(0), self.dim)
+
+            # predict
+            dists = ProtoTools.get_dists(s_emb, q_emb, self.model, sqrt_eucl=True)
+            log_p_y = torch.nn.functional.log_softmax(-dists, dim=1)
+            _, y_hat = log_p_y.max(-1)
+            
+            # collect values
+            self.path.extend(path)
+            self.y = torch.cat((self.y, qy))
+            self.y_hat = torch.cat((self.y_hat, y_hat))
+
+    def compute_accuracy(self):
+        # accuracy, precision and recall
+        acc_overall = self.y_hat.eq(self.y).float().mean()
+        acc_vals = { 
+            self.idx_to_label[c]: torch.div(
+                (self.y_hat.eq(c) & self.y.eq(c)).sum() + (self.y_hat.ne(c) & self.y.ne(c)).sum(),
+                (self.y_hat.eq(c) & self.y.eq(c)).sum() + (self.y_hat.ne(c) & self.y.ne(c)).sum() + \
+                        (self.y_hat.eq(c) & self.y.ne(c)).sum() + (self.y_hat.ne(c) & self.y.eq(c)).sum()
+            )
+            for c in torch.unique(self.y).tolist()
+        }
+        recall = {
+            self.idx_to_label[c]: torch.div(
+                    (self.y_hat.eq(c) & self.y.eq(c)).sum(),
+                    (self.y_hat.eq(c) & self.y.eq(c)).sum() + (self.y_hat.ne(c) & self.y.eq(c)).sum()
+                )
+            for c in torch.unique(self.y).tolist()
+        }
+        precision = {
+            self.idx_to_label[c]: torch.div(
+                (self.y_hat.eq(c) & self.y.eq(c)).sum(),
+                (self.y_hat.eq(c) & self.y.eq(c)).sum() + (self.y_hat.eq(c) & self.y.ne(c)).sum()
+            )
+            for c in torch.unique(self.y).tolist()
+        }
+
+        self.table[self.COL_PATH] = self.path
+        self.table[self.COL_CLASS] = [self.idx_to_label[l] for l in self.y.cpu().numpy().astype(int).tolist()]
+        self.table[self.COL_PREDICT] = [self.idx_to_label[l] for l in self.y_hat.cpu().numpy().astype(int).tolist()]
+
+        import os
+        from PIL import Image
+        for _, row in self.table.iterrows():
+            if not row[self.COL_CLASS] == row[self.COL_PREDICT]:
+                continue
+
+            # only save if mismatch
+            image = Image.open(row[self.COL_PATH]).convert("L")
+            name, ext = row[self.COL_PATH].rsplit(".", 1)
+            image.save(os.path.join(os.getcwd(), "output", f"{os.path.basename(name)}_{row[self.COL_PREDICT]}.{ext}"))
+
+        return acc_overall, acc_vals, recall, precision

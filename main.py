@@ -8,10 +8,11 @@ import argparse
 
 from src.models.model_utils import ModelBuilder, YoloModelBuilder
 from src.train_test.routine_utils import RoutineBuilder
-from lib.glass_defect_dataset.src.datasets.dataset_utils import DatasetBuilder, YoloDatasetBuilder
-from src.utils.config_parser import Model as ModelConfig
+from src.train_test.proto_routine import ProtoInference
 from src.utils.config_parser import Config, read_from_json, write_to_json
 from src.utils.tools import Logger
+from lib.glass_defect_dataset.src.datasets.dataset_utils import DatasetBuilder, YoloDatasetBuilder
+from lib.glass_defect_dataset.src.datasets.dataset import CustomDataset
 from lib.glass_defect_dataset.config.consts import General as _CG
 
 SEED = 1234         # with the first protonet implementation I used 7
@@ -37,6 +38,26 @@ def run_yolo(config: Config):
 
     model.execute(dataset)
 
+def run_inference(config: Config):
+    import copy
+    support_set_config = copy.deepcopy(config.dataset)
+    query_set_config = copy.deepcopy(config.dataset)
+
+    # override support and query paths
+    support_set_config.dataset_path = os.path.join(support_set_config.dataset_path, ProtoInference.SUPPORT)
+    query_set_config.dataset_path = os.path.join(query_set_config.dataset_path, ProtoInference.QUERY)
+
+    # load both dataset separately
+    support_set = DatasetBuilder.load_dataset(support_set_config)
+    query_set = DatasetBuilder.load_dataset(query_set_config)
+    
+    # load model
+    model = ModelBuilder.load_model(config, len(support_set.label_to_idx.keys()))
+    model = model.to(_CG.DEVICE)
+    
+    infer = ProtoInference(config, model, support_set, query_set)
+    infer.test(config.train_test.model_test_path)
+
 def main(config_path: str):
     try:
         config = read_from_json(config_path)
@@ -48,6 +69,12 @@ def main(config_path: str):
     if "yolo" in config.dataset.dataset_type:
         run_yolo(config)
         Logger.instance().debug(f"YOLO ended its execution. Quitting...")
+        sys.exit(0)
+
+    # check if inference mode
+    if "inference" in config.dataset.dataset_type:
+        run_inference(config)
+        Logger.instance().debug(f"Inference ended")
         sys.exit(0)
 
     try:

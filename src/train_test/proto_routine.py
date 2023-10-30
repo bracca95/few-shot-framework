@@ -11,12 +11,14 @@ from typing import Optional, List, Tuple
 from src.models.model import Model
 from src.models.FSL.ProtoNet.distance_module import DistScale
 from src.models.FSL.ProtoNet.proto_batch_sampler import PrototypicalBatchSampler
-from src.models.FSL.ProtoNet.proto_loss import ProtoTools, ProtoLoss, TestResult
+from src.models.FSL.ProtoNet.proto_loss import ProtoTools, ProtoLoss, TestResult, InferenceResult
 from src.models.FSL.ProtoNet.proto_extra_modules import ProtoEnhancements
 from src.train_test.routine import TrainTest
 from src.utils.tools import Tools, Logger
 from src.utils.config_parser import TrainTest as TrainTestConfig
+from src.utils.config_parser import Config
 from lib.glass_defect_dataset.src.datasets.dataset import CustomDataset
+from lib.glass_defect_dataset.src.datasets.defectviews import GlassOpt
 from lib.glass_defect_dataset.config.consts import General as _CG
 
 
@@ -259,3 +261,113 @@ class ProtoRoutine(TrainTest):
                     class_names=list(self.dataset.label_to_idx.keys())
                     )
                 })
+            
+
+class ProtoInference:
+
+    SUPPORT = "support"
+    QUERY = "query"
+
+    def __init__(self, config: Config, model: Model, support_set: GlassOpt, query_set: GlassOpt):
+        self.config = config
+        self.model = model
+        self.support_set = support_set
+        self.query_set = query_set
+
+        if self.config.model.fsl is None:
+            raise ValueError(f"In config/config.json file, `fsl` cannot be Null")
+        self.mod = ProtoEnhancements(self.model, self.config.model.fsl)
+        self.n_way = self.config.model.fsl.test_n_way
+        self.k_shot_s = self.config.model.fsl.test_k_shot_s
+        self.k_shot_q = self.config.model.fsl.test_k_shot_q
+
+    def _init_support_loader(self) -> DataLoader:
+        imgs_in_dir = list(filter(lambda x: x.endswith(".png"), os.listdir(os.path.join(self.config.dataset.dataset_path, self.SUPPORT))))
+
+        # check the number of images is correct
+        if not len(imgs_in_dir) == (2 * self.n_way * self.k_shot_s):
+            raise ValueError(
+                f"There must be {self.n_way} * {self.k_shot_s} ({self.n_way * self.k_shot_s}) defects in the directory. " +
+                f"The current directory contains {len(imgs_in_dir)} images, instead. " +
+                f"IMPORTANT: If you are using two channels, the number of expected files duplicates."
+            )
+
+        # check that there are k_shot for every class
+        defect_names = list(map(lambda x: x.rsplit("_did", 1)[0], imgs_in_dir))
+        defect_classes = set(defect_names)
+        numel_defects_per_class = [defect_names.count(c) for c in defect_classes]
+        if any(map(lambda x: not x == ( 2 * self.k_shot_s), numel_defects_per_class)):
+            raise ValueError(
+                f"Every class ({defect_classes}) must contain exactly {self.k_shot_s} defects, " +
+                f"i.e. {2 * self.k_shot_s} images if two channels are required."
+            )
+        
+        return DataLoader(self.support_set, batch_size=(self.n_way * self.k_shot_s), collate_fn=self.custom_collate_fn)
+    
+    def _init_query_loader(self, _batch_size: Optional[int]=None):
+        batch_size = self.n_way * self.k_shot_q
+
+        if _batch_size is not None:
+            batch_size = _batch_size
+
+        Logger.instance().debug(f"Batch size for queries has been set to {batch_size}.")
+
+        image_batch = []
+        label_batch = []
+        path_batch = []
+
+        # TODO shuffle
+        # use yield to return ALL the query images
+        for img, lbl, path in self.query_set:
+            image_batch.append(img)
+            label_batch.append(lbl)
+            path_batch.append(path)
+            if len(image_batch) == batch_size:
+                yield torch.stack(image_batch, dim=0), torch.LongTensor(label_batch), path_batch
+                image_batch, label_batch, path_batch = [], [], []
+
+        # If there are any remaining images in image_batch after the loop, yield them
+        if image_batch:
+            yield torch.stack(image_batch, dim=0), torch.LongTensor(label_batch), path_batch
+
+    def test(self, model_path: str):
+        Logger.instance().debug("Start inference")
+
+        try:
+            model_path = Tools.validate_path(model_path)
+            self.mod.load_models(model_path)
+        except FileNotFoundError as fnf:
+            Logger.instance().critical(f"model not found: {fnf.args}")
+            sys.exit(-1)
+        except ValueError as ve:
+            Logger.instance().error(f"{ve.args}. No test performed")
+            return
+
+        support_loader = self._init_support_loader()
+        query_loader = self._init_query_loader()
+
+        self.mod.eval()
+        with torch.no_grad():
+            # load support batch (always the same)
+            sx, sy, _ = next(iter(support_loader))
+            sx, sy = sx.to(_CG.DEVICE), sy.to(_CG.DEVICE)
+            s_emb = self.mod.base_model(sx)
+            dim = s_emb.size(-1)
+
+            ir = InferenceResult(self.mod, s_emb, self.n_way, self.k_shot_s, dim, self.support_set.idx_to_label, True)
+            ir.proto_inference(query_loader)
+            acc_overall, acc_vals, recall, precision = ir.compute_accuracy()
+
+            Logger.instance().debug(
+                f"overall accuracy: {acc_overall}\n" +
+                f"accuracy values (class): {acc_vals}\n" +
+                f"recall: {recall}\n" +
+                f"precision: {precision}\n"
+            )
+            
+    @staticmethod
+    def custom_collate_fn(batch):
+        sorted_batch = sorted(batch, key=lambda x: x[1])
+        images, labels, paths = zip(*sorted_batch)
+
+        return torch.stack(images, dim=0), torch.LongTensor(labels), paths
