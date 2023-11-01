@@ -320,13 +320,13 @@ class TestResult:
         _, y_hat = log_p_y.max(2)
 
         acc_overall = y_hat.eq(target_inds.squeeze(2)).float().mean()
-        acc_vals = { c: y_hat[c].eq(target_inds.squeeze(2)[c]).float().mean() for c in range(n_way) }
+        recall = { c: y_hat[c].eq(target_inds.squeeze(2)[c]).float().mean() for c in range(n_way) }
 
         self.acc_overall = torch.cat((self.acc_overall, acc_overall.flatten()))
         self.y_hat = torch.cat((self.y_hat, y_hat.flatten()))
         self.target_inds = torch.cat((self.target_inds, target_inds.flatten()))
 
-        return acc_overall, { v: acc_vals[i] for i, v in enumerate(mapping.values()) }
+        return acc_overall, { v: recall[i] for i, v in enumerate(mapping.values()) }
     
 
 class InferenceResult:
@@ -413,16 +413,25 @@ class InferenceResult:
         self.table[self.COL_PATH] = self.path
         self.table[self.COL_CLASS] = [self.idx_to_label[l] for l in self.y.cpu().numpy().astype(int).tolist()]
         self.table[self.COL_PREDICT] = [self.idx_to_label[l] for l in self.y_hat.cpu().numpy().astype(int).tolist()]
+        self.table.to_csv(f"output/score.csv", sep=",")
 
         import os
+        import wandb
         from PIL import Image
+
+        mismatch_dir = os.path.join(os.getcwd(), "output", "mismatch")
+        if not os.path.exists(mismatch_dir):
+            os.makedirs(mismatch_dir)
+        
         for _, row in self.table.iterrows():
-            if not row[self.COL_CLASS] == row[self.COL_PREDICT]:
+            if row[self.COL_CLASS] == row[self.COL_PREDICT]:
                 continue
 
             # only save if mismatch
             image = Image.open(row[self.COL_PATH]).convert("L")
             name, ext = row[self.COL_PATH].rsplit(".", 1)
-            image.save(os.path.join(os.getcwd(), "output", f"{os.path.basename(name)}_{row[self.COL_PREDICT]}.{ext}"))
-
+            image.save(os.path.join(mismatch_dir, f"{os.path.basename(name)}_{row[self.COL_PREDICT]}.{ext}"))
+        
+        wandb.save(f"{os.path.join(mismatch_dir, '*.png')}", base_path=os.getcwd())
+        wandb.save(f"{os.path.join(os.getcwd(), 'output/score.csv')}", base_path=os.getcwd())
         return acc_overall, acc_vals, recall, precision

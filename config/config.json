@@ -1,12 +1,12 @@
 {
     "experiment_name": "disabled",
     "dataset": {
-        "dataset_path": "/media/lorenzo/M/datasets/dataset_opt/2.2_dataset_opt/dmx_2c/test_samples_1",
+        "dataset_path": "/media/lorenzo/M/datasets/dmx/dmx_2c/bb_margin_split/test",
         "dataset_type": "opt_double_inference",
         "dataset_splits": [
-            0.7,
             0.0,
-            0.3
+            0.0,
+            1.0
         ],
         "normalize": true,
         "crop_size": 30,
@@ -14,12 +14,12 @@
         "augment_online": null,
         "augment_offline": null,
         "dataset_mean": [
-            0.531044602394104,
-            0.013784993439912796
+            0.5303308963775635,
+            0.01888517290353775
         ],
         "dataset_std": [
-            0.04420464113354683,
-            0.010891353711485863
+            0.044214509427547455,
+            0.03287575766444206
         ]
     },
     "model": {
@@ -33,8 +33,8 @@
             "train_k_shot_q": 5,
             "test_n_way": 4,
             "test_k_shot_s": 5,
-            "test_k_shot_q": 5,
-            "enhancement": "apn"
+            "test_k_shot_q": 3,
+            "enhancement": null
         }
     },
     "train_test": {

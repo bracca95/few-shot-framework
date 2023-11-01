@@ -32,6 +32,20 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--config_file", nargs="?", type=str, default=None)
 args = vars(parser.parse_args())
 
+def init_wandb(config: Config):
+    ## start program
+    wandb_mode = "disabled" if config.experiment_name == "disabled" else "online"
+    wandb.init(
+        mode=wandb_mode,
+        project=config.experiment_name,
+        config={
+            "learning_rate": config.train_test.learning_rate,
+            "architecture": config.model.model_name,
+            "dataset": config.dataset.dataset_type,
+            "epochs": config.train_test.epochs,
+        }
+    )
+
 def run_yolo(config: Config):
     dataset = YoloDatasetBuilder.load_dataset(config.dataset)
     model = YoloModelBuilder.load_model(config)
@@ -55,8 +69,10 @@ def run_inference(config: Config):
     model = ModelBuilder.load_model(config, len(support_set.label_to_idx.keys()))
     model = model.to(_CG.DEVICE)
     
+    init_wandb(config)
     infer = ProtoInference(config, model, support_set, query_set)
     infer.test(config.train_test.model_test_path)
+    wandb.finish()
 
 def main(config_path: str):
     try:
@@ -96,18 +112,7 @@ def main(config_path: str):
         config = read_from_json(config_path)
         dataset = DatasetBuilder.load_dataset(config.dataset)
 
-    ## start program
-    wandb_mode = "disabled" if config.experiment_name == "disabled" else "online"
-    wandb.init(
-        mode=wandb_mode,
-        project=config.experiment_name,
-        config={
-            "learning_rate": config.train_test.learning_rate,
-            "architecture": config.model.model_name,
-            "dataset": config.dataset.dataset_type,
-            "epochs": config.train_test.epochs,
-        }
-    )
+    init_wandb(config)
 
     # instantiate model
     try:
@@ -127,7 +132,7 @@ def main(config_path: str):
     model_path = config.train_test.model_test_path if config.train_test.model_test_path is not None else model_path
     routine.test(model_path)
 
-    wandb.save("output/log.log")
+    wandb.save(f"{os.path.join(os.getcwd(), 'output', 'log.log')}", base_path=os.getcwd())
     wandb.finish()
 
 if __name__=="__main__":

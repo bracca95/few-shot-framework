@@ -51,12 +51,13 @@ class TrainTest(ABC):
         self.acc_var.append(curr_acc)
 
         acc_var = torch.Tensor(list(self.acc_var))
-        if torch.max(acc_var) - torch.min(acc_var) > 2 * eps:
-            return False
         
         if torch.max(acc_var) > 0.999:
             Logger.instance().warning(f"Accuracy is 1.0: hit stop conditions")
             return True
+        
+        if torch.max(acc_var) - torch.min(acc_var) > 2 * eps:
+            return False
         
         Logger.instance().warning(f"Raised stop condition: last {len(self.acc_var)} increment below {2 * eps}")
         return True

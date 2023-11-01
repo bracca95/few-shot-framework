@@ -17,7 +17,7 @@ if __name__=="__main__":
 
         if process.returncode == 0:
             # give enough time to wandb to close
-            time.sleep(20)
+            time.sleep(10)
 
             # at the end of the execution:
             #   1. create a folder with the current experiment name

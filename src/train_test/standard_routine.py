@@ -137,8 +137,8 @@ class StandardRoutine(TrainTest):
                 Logger.instance().debug(f"STOP: saving last epoch model named `{os.path.basename(pth_path)}`")
                 torch.save(self.model.state_dict(), pth_path)
 
-                # wandb: save all models
-                wandb.save(f"{out_folder}/*.pth")
+                # wandb: save model(s)
+                wandb.save(f"{out_folder}/best_model.pth", base_path=os.getcwd())
 
                 return
 

@@ -47,7 +47,7 @@ class TimmFeatureExtractor(Model):
 
         Logger.instance().debug(f"model info: {self.m.default_cfg}")
 
-        if self.mean is not None and self.std is not None:
+        if config.dataset.normalize is not None and self.mean is not None and self.std is not None:
             Logger.instance().debug(f"using custom mean {self.mean} and std {self.std}")
             self.m.mean = tuple(self.mean)
             self.m.std = tuple(self.std)

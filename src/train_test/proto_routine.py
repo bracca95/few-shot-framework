@@ -165,7 +165,7 @@ class ProtoRoutine(TrainTest):
                 self.mod.save_models(pth_path)
 
                 # wandb: save all models
-                wandb.save(f"{out_folder}/*.pth")
+                wandb.save(f"{out_folder}/best_model.pth", base_path=os.getcwd())
 
                 return
 
@@ -316,7 +316,7 @@ class ProtoInference:
         label_batch = []
         path_batch = []
 
-        # TODO shuffle
+        # CHECK could shuffle, but for inference in standard protonet is not necessary
         # use yield to return ALL the query images
         for img, lbl, path in self.query_set:
             image_batch.append(img)
@@ -364,6 +364,8 @@ class ProtoInference:
                 f"recall: {recall}\n" +
                 f"precision: {precision}\n"
             )
+
+        wandb.save(f"{os.path.join(os.getcwd(), 'output/log.log')}", base_path=os.getcwd())
             
     @staticmethod
     def custom_collate_fn(batch):
