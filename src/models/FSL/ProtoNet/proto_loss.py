@@ -392,21 +392,21 @@ class InferenceResult:
                 (self.y_hat.eq(c) & self.y.eq(c)).sum() + (self.y_hat.ne(c) & self.y.ne(c)).sum(),
                 (self.y_hat.eq(c) & self.y.eq(c)).sum() + (self.y_hat.ne(c) & self.y.ne(c)).sum() + \
                         (self.y_hat.eq(c) & self.y.ne(c)).sum() + (self.y_hat.ne(c) & self.y.eq(c)).sum()
-            )
+            ).item()
             for c in torch.unique(self.y).tolist()
         }
         recall = {
             self.idx_to_label[c]: torch.div(
                     (self.y_hat.eq(c) & self.y.eq(c)).sum(),
                     (self.y_hat.eq(c) & self.y.eq(c)).sum() + (self.y_hat.ne(c) & self.y.eq(c)).sum()
-                )
+                ).item()
             for c in torch.unique(self.y).tolist()
         }
         precision = {
             self.idx_to_label[c]: torch.div(
                 (self.y_hat.eq(c) & self.y.eq(c)).sum(),
                 (self.y_hat.eq(c) & self.y.eq(c)).sum() + (self.y_hat.eq(c) & self.y.ne(c)).sum()
-            )
+            ).item()
             for c in torch.unique(self.y).tolist()
         }
 

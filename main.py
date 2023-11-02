@@ -112,6 +112,7 @@ def main(config_path: str):
         config = read_from_json(config_path)
         dataset = DatasetBuilder.load_dataset(config.dataset)
 
+    # start main program
     init_wandb(config)
 
     # instantiate model
