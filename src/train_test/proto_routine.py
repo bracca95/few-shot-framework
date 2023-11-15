@@ -9,16 +9,15 @@ from torch.utils.data import DataLoader
 from typing import Optional, List, Tuple
 
 from src.models.model import Model
-from src.models.FSL.ProtoNet.distance_module import DistScale
 from src.models.FSL.ProtoNet.proto_batch_sampler import PrototypicalBatchSampler
-from src.models.FSL.ProtoNet.proto_loss import ProtoTools, ProtoLoss, TestResult, InferenceResult
+from src.models.FSL.ProtoNet.proto_loss import ProtoLoss, TestResult, InferenceResult
 from src.models.FSL.ProtoNet.proto_extra_modules import ProtoEnhancements
 from src.train_test.routine import TrainTest
-from src.utils.tools import Tools, Logger
 from src.utils.config_parser import TrainTest as TrainTestConfig
 from src.utils.config_parser import Config
-from lib.glass_defect_dataset.src.datasets.dataset import CustomDataset
-from lib.glass_defect_dataset.src.datasets.defectviews import GlassOpt
+from lib.glass_defect_dataset.src.datasets.dataset import DatasetWrapper, DatasetLauncher
+from lib.glass_defect_dataset.src.datasets.custom.defectviews import GlassOpt
+from lib.glass_defect_dataset.src.utils.tools import Tools, Logger
 from lib.glass_defect_dataset.config.consts import General as _CG
 
 
@@ -26,7 +25,7 @@ class ProtoRoutine(TrainTest):
 
     W_LOSS = False
 
-    def __init__(self, train_test_config: TrainTestConfig, model: Model, dataset: CustomDataset):
+    def __init__(self, train_test_config: TrainTestConfig, model: Model, dataset: DatasetWrapper):
         super().__init__(train_test_config, model, dataset)
         self.learning_rate = 0.001
         self.lr_scheduler_gamma = 0.5
@@ -40,29 +39,23 @@ class ProtoRoutine(TrainTest):
         self.mod = ProtoEnhancements(self.model, self._model_config.fsl)
 
     def init_loader(self, split_set: str):
-        current_subset = self.dataset.get_subset_info(split_set)
+        current_dataset = getattr(self.dataset_wrapper, f"{split_set}_dataset")
         
-        if current_subset.subset is None:
+        if current_dataset is None:
             return None
         
-        train_str, val_str, test_str = _CG.DEFAULT_SUBSETS
-        if split_set == train_str:
-            min_req = self._model_config.fsl.train_k_shot_s + self._model_config.fsl.train_k_shot_q
-        else:
-            min_req = self._model_config.fsl.test_k_shot_s + self._model_config.fsl.test_k_shot_q
-        
-        if any(map(lambda x: x < min_req, current_subset.info_dict.values())):
-            if split_set == val_str:
-                Logger.instance().error(f"Skip validation! Val set has not enough elements in some class. Check train s+q config.")
-                return None
-            raise ValueError(f"At least one class has not enough elements {(min_req)}. Check {current_subset.info_dict}")
-        
-        idxs = torch.LongTensor(current_subset.subset.indices)
-        label_list = torch.IntTensor(current_subset.subset.dataset.label_list)[idxs].tolist()
         if split_set == self.train_str:
             num_samples = self._model_config.fsl.train_k_shot_s + self._model_config.fsl.train_k_shot_q
         else:
             num_samples = self._model_config.fsl.test_k_shot_s + self._model_config.fsl.test_k_shot_q
+        
+        if any(map(lambda x: x < num_samples, current_dataset.info_dict.values())):
+            if split_set == self.val_str:
+                Logger.instance().error(f"Skip validation! Val set has not enough elements in some class. Check train s+q config.")
+                return None
+            raise ValueError(f"At least one class has not enough elements {(num_samples)}. Check {current_dataset.info_dict}")
+        
+        label_list = current_dataset.label_list
         
         sampler = PrototypicalBatchSampler(
             label_list,
@@ -70,7 +63,7 @@ class ProtoRoutine(TrainTest):
             num_samples,
             self._model_config.fsl.episodes
         )
-        return DataLoader(current_subset.subset, batch_sampler=sampler)
+        return DataLoader(current_dataset, batch_sampler=sampler)
 
     def train(self):
         Logger.instance().debug("Start training")
@@ -211,7 +204,7 @@ class ProtoRoutine(TrainTest):
         self.mod.load_models(model_path)
         
         legacy_avg_acc = list()
-        acc_per_epoch = { i: torch.FloatTensor().to(_CG.DEVICE) for i in range(len(self.test_info.info_dict.keys())) }
+        acc_per_epoch = { i: torch.FloatTensor().to(_CG.DEVICE) for i in range(len(self.test_info.keys())) }
 
         tr_acc_max = 0.0
         tr_max = TestResult()
@@ -222,7 +215,7 @@ class ProtoRoutine(TrainTest):
         with torch.no_grad():
             for epoch in tqdm(range(10)):
                 tr = TestResult()
-                score_per_class = { i: torch.FloatTensor().to(_CG.DEVICE) for i in range(len(self.test_info.info_dict.keys())) }
+                score_per_class = { i: torch.FloatTensor().to(_CG.DEVICE) for i in range(len(self.test_info.keys())) }
                 for x, y in testloader:
                     x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
                     y_pred = self.mod.base_model(x)
@@ -234,7 +227,7 @@ class ProtoRoutine(TrainTest):
                         score_per_class[k] = torch.cat((score_per_class[k], v.reshape(1,)))
                 
                 avg_score_class = { k: torch.mean(v) for k, v in score_per_class.items() }
-                avg_score_class_print = { k: v.item() for (k, v) in zip(self.test_info.info_dict.keys(), avg_score_class.values()) }
+                avg_score_class_print = { k: v.item() for (k, v) in zip(self.test_info.keys(), avg_score_class.values()) }
                 Logger.instance().debug(f"at epoch {epoch}, average test accuracy: {avg_score_class_print}")
 
                 for k, v in avg_score_class.items():
@@ -245,20 +238,20 @@ class ProtoRoutine(TrainTest):
                     tr_max = tr
 
         avg_acc_epoch = { k: torch.mean(v) for k, v in acc_per_epoch.items() }
-        avg_acc_epoch_print = { k: v.item() for (k, v) in zip(self.test_info.info_dict.keys(), avg_acc_epoch.values()) }
+        avg_acc_epoch_print = { k: v.item() for (k, v) in zip(self.test_info.keys(), avg_acc_epoch.values()) }
         Logger.instance().debug(f"Accuracy on epochs: {avg_acc_epoch_print}")
         
         legacy_avg_acc = np.mean(legacy_avg_acc)
         Logger.instance().debug(f"Legacy test accuracy: {legacy_avg_acc}")
 
-        if self._model_config.fsl.test_n_way == len(self.test_info.info_dict.keys()) and len(tr_max.target_inds) != 0 and len(tr_max.y_hat) != 0:
+        if self._model_config.fsl.test_n_way == len(self.test_info.keys()) and len(tr_max.target_inds) != 0 and len(tr_max.y_hat) != 0:
             y_true = tr_max.target_inds
             preds = tr_max.y_hat
             wandb.log({
                 "confusion": wandb.plot.confusion_matrix(
                     y_true=y_true.cpu().detach().numpy(),
                     preds=preds.cpu().detach().numpy(),
-                    class_names=list(self.dataset.label_to_idx.keys())
+                    class_names=list(self.dataset_wrapper.label_to_idx.keys())
                     )
                 })
             
@@ -302,7 +295,7 @@ class ProtoInference:
                 f"i.e. {2 * self.k_shot_s} images if two channels are required."
             )
         
-        return DataLoader(self.support_set, batch_size=(self.n_way * self.k_shot_s), collate_fn=self.custom_collate_fn)
+        return DataLoader(self.support_set.test_dataset, batch_size=(self.n_way * self.k_shot_s), collate_fn=self.custom_collate_fn)
     
     def _init_query_loader(self, _batch_size: Optional[int]=None):
         batch_size = self.n_way * self.k_shot_q
@@ -318,7 +311,7 @@ class ProtoInference:
 
         # CHECK could shuffle, but for inference in standard protonet is not necessary
         # use yield to return ALL the query images
-        for img, lbl, path in self.query_set:
+        for img, lbl, path in self.query_set.test_dataset:
             image_batch.append(img)
             label_batch.append(lbl)
             path_batch.append(path)

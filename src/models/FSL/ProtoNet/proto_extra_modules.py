@@ -5,8 +5,8 @@ from typing import Optional, List
 
 from src.models.model import Model
 from src.models.FSL.ProtoNet.distance_module import DistScale
-from src.utils.tools import Logger
 from src.utils.config_parser import Fsl as FslConfig
+from lib.glass_defect_dataset.src.utils.tools import Logger
 from lib.glass_defect_dataset.config.consts import General as _CG
 
 class ProtoEnhancements:

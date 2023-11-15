@@ -11,14 +11,14 @@ from torchvision.utils import make_grid
 from src.models.model import Model
 from src.train_test.routine import TrainTest
 from src.utils.config_parser import TrainTest as TrainTestConfig
-from lib.glass_defect_dataset.src.datasets.dataset import CustomDataset
+from lib.glass_defect_dataset.src.datasets.dataset import DatasetWrapper
 from lib.glass_defect_dataset.config.consts import General as _CG
-from src.utils.tools import Logger, Tools
+from lib.glass_defect_dataset.src.utils.tools import Logger, Tools
 
 
 class StandardRoutine(TrainTest):
 
-    def __init__(self, train_test_config: TrainTestConfig, model: Model, dataset: CustomDataset):
+    def __init__(self, train_test_config: TrainTestConfig, model: Model, dataset: DatasetWrapper):
         super().__init__(train_test_config, model, dataset)
 
         self.criterion = nn.CrossEntropyLoss()
@@ -45,7 +45,7 @@ class StandardRoutine(TrainTest):
         return cls_acc_dict
     
     def init_loader(self, split_set: str):
-        current_subset = self.dataset.get_subset_info(split_set)
+        current_subset = self.dataset_wrapper.get_subset_info(split_set)
         if current_subset.subset is None:
             return None
         
@@ -148,7 +148,7 @@ class StandardRoutine(TrainTest):
         tot_samples = 0
         tot_correct = 0
 
-        loss = 0
+        running_loss = 0.0
         
         self.model.eval()
         for images, labels in valloader:
@@ -165,12 +165,14 @@ class StandardRoutine(TrainTest):
             # accuracy
             tot_samples += labels.size(0)
             tot_correct += n_correct
+            running_loss += loss.item()
 
         acc = tot_correct / tot_samples
+        running_loss /= len(valloader)
 
-        Logger.instance().debug(f"Avg Val Loss: {loss}, Avg Val Acc: {acc}")
+        Logger.instance().debug(f"Avg Val Loss: {running_loss}, Avg Val Acc: {acc}")
 
-        return loss, acc
+        return running_loss, acc
     
     def test(self, model_path: str):
         Logger.instance().debug("Start testing")
@@ -185,7 +187,7 @@ class StandardRoutine(TrainTest):
         testloader = self.init_loader(self.test_str)
 
         # load labels for class accuracies
-        current_subset = self.dataset.subsets_dict[self.test_str]
+        current_subset = self.dataset_wrapper.subsets_dict[self.test_str]
         idxs = torch.LongTensor(current_subset.indices)
         label_list = torch.IntTensor(current_subset.dataset.label_list)[idxs]
         classes = torch.unique(label_list)
@@ -223,19 +225,19 @@ class StandardRoutine(TrainTest):
                     "pr_curve": wandb.plot.pr_curve(
                         all_labels.cpu().detach().numpy(),
                         all_pred_vals.cpu().detach().numpy(),
-                        labels=list(self.dataset.label_to_idx.keys())
+                        labels=list(self.dataset_wrapper.label_to_idx.keys())
                         )
                 })
             wandb.log({
                     "confusion": wandb.plot.confusion_matrix(
                         y_true=all_labels.cpu().detach().numpy(),
                         preds=all_cls_idxs.cpu().detach().numpy(),
-                        class_names=list(self.dataset.label_to_idx.keys())
+                        class_names=list(self.dataset_wrapper.label_to_idx.keys())
                         )
             })
 
             acc = tot_correct / tot_samples
-            class_accuracy = { self.dataset.idx_to_label[c.item()]: cls_acc_dict[c.item()][0] / cls_acc_dict[c.item()][1] for c in classes }
+            class_accuracy = { self.dataset_wrapper.idx_to_label[c.item()]: cls_acc_dict[c.item()][0] / cls_acc_dict[c.item()][1] for c in classes }
 
             Logger.instance().debug(f"Accuracy for each class: {class_accuracy}")
             Logger.instance().debug(f"Test accuracy on {len(self.test_info.subset.indices)} images: {acc:.3f}")

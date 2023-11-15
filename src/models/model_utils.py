@@ -9,7 +9,7 @@ from src.models.pretrained.extractors import TimmFeatureExtractor
 from src.models.pretrained.classification_head import Head
 from src.models.yolov8 import YoloTrain, YoloInference
 from src.utils.config_parser import Config
-from src.utils.tools import Logger
+from lib.glass_defect_dataset.src.utils.tools import Logger
     
 
 class ModelBuilder:

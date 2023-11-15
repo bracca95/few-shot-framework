@@ -10,9 +10,9 @@ from src.models.model_utils import ModelBuilder, YoloModelBuilder
 from src.train_test.routine_utils import RoutineBuilder
 from src.train_test.proto_routine import ProtoInference
 from src.utils.config_parser import Config, read_from_json, write_to_json
-from src.utils.tools import Logger
 from lib.glass_defect_dataset.src.datasets.dataset_utils import DatasetBuilder, YoloDatasetBuilder
-from lib.glass_defect_dataset.src.datasets.dataset import CustomDataset
+from lib.glass_defect_dataset.src.datasets.dataset import DatasetLauncher
+from lib.glass_defect_dataset.src.utils.tools import Logger
 from lib.glass_defect_dataset.config.consts import General as _CG
 
 SEED = 1234         # with the first protonet implementation I used 7
@@ -94,8 +94,8 @@ def main(config_path: str):
         sys.exit(0)
 
     try:
-        dataset = DatasetBuilder.load_dataset(config.dataset)
-        dataset.save_sample_image_batch(dataset, os.path.join(os.getcwd(), "output"))
+        dataset_wrapper = DatasetBuilder.load_dataset(config.dataset)
+        DatasetLauncher.save_sample_image_batch(dataset_wrapper.train_dataset, os.path.join(os.getcwd(), "output"))
     except ValueError as ve:
         Logger.instance().critical(ve.args)
         sys.exit(-1)
@@ -103,28 +103,34 @@ def main(config_path: str):
     # compute mean and variance of the dataset if not done yet
     if config.dataset.normalize and config.dataset.dataset_mean is None and config.dataset.dataset_std is None:
         Logger.instance().warning("No mean and std set: computing and storing values.")
-        mean, std = dataset.compute_mean_std(dataset)
+        mean, std = DatasetLauncher.compute_mean_std(dataset_wrapper.train_dataset, config.dataset.dataset_type)
         config.dataset.dataset_mean = mean.tolist()
         config.dataset.dataset_std = std.tolist()
         write_to_json(config, os.getcwd(), config_path)
         
         # reload
         config = read_from_json(config_path)
-        dataset = DatasetBuilder.load_dataset(config.dataset)
+        dataset_wrapper = DatasetBuilder.load_dataset(config.dataset)
 
     # start main program
     init_wandb(config)
 
     # instantiate model
     try:
-        model = ModelBuilder.load_model(config, len(dataset.label_to_idx))
+        head_length = 0
+        for split in ("train", "val", "test"):
+            curr_split = getattr(dataset_wrapper, f"{split}_dataset")
+            if curr_split is not None:
+                head_length += len(curr_split)
+        
+        model = ModelBuilder.load_model(config, head_length)
         model = model.to(_CG.DEVICE)
     except ValueError as ve:
         Logger.instance().critical(ve.args)
         sys.exit(-1)
     
     # train/test
-    routine = RoutineBuilder.build_routine(config.train_test, model, dataset)
+    routine = RoutineBuilder.build_routine(config.train_test, model, dataset_wrapper)
     
     if config.train_test.model_test_path is None:
         routine.train()

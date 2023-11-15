@@ -1,8 +1,8 @@
 from torch import nn
 
 from src.models.model import Model
-from src.utils.tools import Logger
 from src.utils.config_parser import Config
+from lib.glass_defect_dataset.src.utils.tools import Logger
 
 
 class Head(Model):

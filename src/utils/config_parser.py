@@ -10,7 +10,6 @@ from functools import reduce
 from dataclasses import dataclass, field
 from typing import Optional, Union, List, Any, Callable, Iterable, Type, cast
 
-from src.utils.tools import Tools, Logger
 from config.consts import ConfigConst as _CC
 from config.consts import ModelConfig as _CM
 from config.consts import FSLConsts as _CFSL
@@ -18,6 +17,7 @@ from config.consts import TrainTestConfig as _CTT
 from lib.glass_defect_dataset.config.consts import T
 from lib.glass_defect_dataset.config.consts import General as _CG
 from lib.glass_defect_dataset.src.utils.config_parser import DatasetConfig
+from lib.glass_defect_dataset.src.utils.tools import Tools, Logger
 
 def from_bool(x: Any) -> bool:
     Tools.check_instance(x, bool)

@@ -6,9 +6,9 @@ from PIL import Image, ImageDraw
 from typing import Optional
 from ultralytics import YOLO
 
-from lib.glass_defect_dataset.src.datasets.glass_plate import SinglePlate, GlassPlateTrainYolo, GlassPlate
 from src.utils.config_parser import Config
-from src.utils.tools import Logger
+from lib.glass_defect_dataset.src.utils.tools import Logger
+from lib.glass_defect_dataset.src.datasets.other.glass_plate import SinglePlate, GlassPlateTrainYolo, GlassPlate
 
 
 class YoloTrain:

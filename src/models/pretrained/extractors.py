@@ -2,9 +2,8 @@ import timm
 
 from typing import Optional, List
 from src.models.model import Model
-from src.utils.tools import Logger
 from src.utils.config_parser import Config
-
+from lib.glass_defect_dataset.src.utils.tools import Logger
 
 class TimmFeatureExtractor(Model):
     """Manage feature extraction with timm pretrained models

@@ -1,10 +1,10 @@
 import torch
 from torch import nn
-from typing import Optional, Union, Tuple
+from typing import Optional, Union
 
-from src.utils.tools import Logger
 from src.utils.config_parser import Config
-from lib.glass_defect_dataset.src.datasets.dataset import CustomDataset
+from lib.glass_defect_dataset.src.utils.tools import Logger
+
 
 class Model(nn.Module):
 

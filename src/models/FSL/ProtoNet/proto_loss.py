@@ -2,11 +2,10 @@ import torch
 
 from typing import Optional, Tuple, List
 from torch.nn import functional as F
-from torch.nn.modules import Module
 
-from src.utils.tools import Tools, Logger
 from src.models.FSL.ProtoNet.proto_extra_modules import ProtoEnhancements
 from lib.glass_defect_dataset.config.consts import General as _CG
+from lib.glass_defect_dataset.src.utils.tools import Tools, Logger
 
 
 class ProtoTools:

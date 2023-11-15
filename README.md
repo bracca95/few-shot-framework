@@ -12,8 +12,10 @@ $ git submodule init
 ```
 in the main project directory.
 
+Next, install packages `wheel` and [pytorch (version 2.1)](https://pytorch.org/get-started/locally/) with CUDA. Finally, install all the requirements in `requirements.txt`
+
 ## Dataset
-Your own dataset can be built by inheriting from the abstract class `CustomDataset` in `src.dataset.dataset`
+Your own dataset can be built by implementing the abstract class `DatasetWrapper` in `src.dataset.dataset.py`
 
 ## Config
 ### General
@@ -24,7 +26,7 @@ Your own dataset can be built by inheriting from the abstract class `CustomDatas
 ### Dataset
 ```
 "dataset_path": str. Path to the dataset,
-"dataset_type": {`opt6`, `opt_bckg`, `opt_double`, `opt_double_inference`, `binary`, `qplusv1`, `qplusv2`, `qplus_double`, `omniglot`, `miniimagenet`, `opt_yolo_train`, `opt_yolo_test`, `cub`, `cifar_fs`},
+"dataset_type": {`opt6`, `opt_bckg`, `opt_double`, `opt_double_inference`, `binary`, `qplusv1`, `qplusv2`, `qplus_double`, `omniglot`, `miniimagenet`, `opt_yolo_train`, `opt_yolo_test`, `cub`, `cifar_fs`, `celeba`},
 "dataset_splits": List[float] (1 for train/test (e.g. [0.8]), 3 for train/val/test),
 "normalize": bool,
 "crop_size": int,

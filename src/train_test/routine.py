@@ -4,10 +4,10 @@ from abc import ABC, abstractmethod
 from typing import Optional, Deque
 from collections import deque
 
-from src.utils.tools import Logger
 from src.utils.config_parser import TrainTest as TrainTestConfig
 from src.models.model import Model
-from lib.glass_defect_dataset.src.datasets.dataset import CustomDataset, SubsetInfo
+from lib.glass_defect_dataset.src.datasets.dataset import DatasetWrapper
+from lib.glass_defect_dataset.src.utils.tools import Logger
 from lib.glass_defect_dataset.config.consts import General as _CG
 
 
@@ -15,14 +15,15 @@ class TrainTest(ABC):
 
     train_str, val_str, test_str = _CG.DEFAULT_SUBSETS
     
-    def __init__(self, train_test_config: TrainTestConfig, model: Model, dataset: CustomDataset):
+    def __init__(self, train_test_config: TrainTestConfig, model: Model, dataset_wrapper: DatasetWrapper):
         self.train_test_config = train_test_config
         self.model = model
-        self.dataset = dataset
+        self.dataset_wrapper = dataset_wrapper
 
-        self.train_info: Optional[SubsetInfo] = self.dataset.get_subset_info(self.train_str)
-        self.val_info: Optional[SubsetInfo] = self.dataset.get_subset_info(self.val_str)
-        self.test_info: Optional[SubsetInfo] = self.dataset.get_subset_info(self.test_str)
+        # CHECK to avoid linter's error change abstract property of DatasetWrapper.{split}_dataset to DatasetLauncher
+        self.train_info: Optional[dict] = self.dataset_wrapper.train_dataset.info_dict
+        self.val_info: Optional[dict] = self.dataset_wrapper.val_dataset.info_dict if self.dataset_wrapper.val_dataset is not None else None
+        self.test_info: Optional[dict] = self.dataset_wrapper.test_dataset.info_dict
 
         self._model_config = self.model.config.model
         self.acc_var: Deque[float] = deque(maxlen=10)
@@ -65,7 +66,7 @@ class TrainTest(ABC):
 
 class TrainTestExample(TrainTest):
 
-    def __init__(self, train_test_config: TrainTestConfig, model: Model, dataset: CustomDataset):
+    def __init__(self, train_test_config: TrainTestConfig, model: Model, dataset: DatasetWrapper):
         super().__init__(train_test_config, model, dataset)
 
     def train(self):
