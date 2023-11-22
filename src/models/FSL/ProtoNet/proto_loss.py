@@ -244,11 +244,11 @@ class ProtoLoss:
     
     def _lifted_structured_loss(self, xs_emb: torch.Tensor, n_classes: int, n_support: int) -> torch.Tensor:
         # norm_emb = xs_emb / torch.linalg.norm(xs_emb, dim=-1, ord=2, keepdim=True)                    # L2 row-vector norm
-        norm_emb = (xs_emb - xs_emb.mean()) / (xs_emb.std() + 1e-6)                                     # z-score normalization aka standardization (batch-norm)
+        # norm_emb = (xs_emb - xs_emb.mean()) / (xs_emb.std() + 1e-6)                                   # z-score normalization aka standardization (batch-norm)
         # norm_emb = xs_emb / torch.linalg.matrix_norm(xs_emb, ord='fro')                               # matrix norm
         # norm_emb = torch.div(xs_emb - torch.min(xs_emb), torch.max(xs_emb) - torch.min(xs_emb))       # classic normalization formula
         
-        dists = ProtoTools.euclidean_dist(norm_emb, norm_emb, sqrt=self.sqrt_eucl)
+        dists = ProtoTools.euclidean_dist(xs_emb, xs_emb, sqrt=self.sqrt_eucl)
         
         if dists.size(0) != dists.size(1) != n_classes * n_support:
             raise ValueError(f"Tensor must be square-shaped. Found t = {dists.shape}, N = {n_classes} * K = {n_support}")

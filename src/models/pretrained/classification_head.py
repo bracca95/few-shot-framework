@@ -35,3 +35,6 @@ class SimCLRProj(ClassificationHead):
             nn.ReLU(),
             nn.Linear(out_class, out_class)
         )
+
+    def forward(self, x):
+        return self.linear(x)
