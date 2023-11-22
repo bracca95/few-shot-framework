@@ -1,12 +1,13 @@
 from typing import Union
 
 from src.models.model import Model
+from src.models.autoencoders.vanillavae import VanillaVAE
 from src.models.MLP.mlp_basic import MLP
 from src.models.CNN.cnn_basic import CNN
 from src.models.CNN.cnn_105 import CNN105
 from src.models.FSL.ProtoNet.protonet import ProtoNet
 from src.models.pretrained.extractors import TimmFeatureExtractor
-from src.models.pretrained.classification_head import Head
+from src.models.pretrained.classification_head import ClassificationHead
 from src.models.yolov8 import YoloTrain, YoloInference
 from src.utils.config_parser import Config
 from lib.glass_defect_dataset.src.utils.tools import Logger
@@ -38,7 +39,7 @@ class ModelBuilder:
                 )
             else:
                 raise ValueError("No 'compare' model available.")
-            return Head(config, extractor, out_classes)
+            return ClassificationHead(config, extractor, out_classes)
             
         # few-shot learning models
         if model_name == "default":
@@ -49,7 +50,7 @@ class ModelBuilder:
             return CNN(config)
         if model_name == "cnn105":
             return CNN105(config)
-        if model_name in ("resnet50", "hrnet_w18", "vit_tiny_patch16_224"):
+        if model_name in ("resnet50", "resnet18", "hrnet_w18", "vit_tiny_patch16_224"):
             in_channels = 1 if config.dataset.dataset_mean is None else len(config.dataset.dataset_mean)
             return TimmFeatureExtractor(
                 config,

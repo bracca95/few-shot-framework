@@ -4,6 +4,7 @@ from typing import Optional, Union
 
 from src.utils.config_parser import Config
 from lib.glass_defect_dataset.src.utils.tools import Logger
+from lib.glass_defect_dataset.config.consts import General as _CG
 
 
 class Model(nn.Module):
@@ -57,7 +58,7 @@ class Model(nn.Module):
         x = torch.randn(batch_size, n_channels, self.config.dataset.image_size, self.config.dataset.image_size)
         
         with torch.no_grad():
-            output = self.forward(x)
+            output = self.forward(x.to(_CG.DEVICE))
 
         # assuming a flat tensor so that shape = (batch_size, feature_vector, Opt[unpooled], Opt[unpooled])
         if pos is not None:

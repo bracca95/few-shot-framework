@@ -5,7 +5,6 @@ from typing import Optional, List
 
 from src.models.model import Model
 from src.models.FSL.ProtoNet.distance_module import DistScale
-from src.utils.config_parser import Fsl as FslConfig
 from lib.glass_defect_dataset.src.utils.tools import Logger
 from lib.glass_defect_dataset.config.consts import General as _CG
 
@@ -15,10 +14,9 @@ class ProtoEnhancements:
     MOD_DIST = "dist_of_dists"
     MOD_APN = "apn"
 
-    def __init__(self, base_model: Model, fsl_config: FslConfig):
+    def __init__(self, base_model: Model):
         self.base_model = base_model
-        self.fsl_config = fsl_config
-        self.name = fsl_config.enhancement
+        self.name = base_model.config.model.fsl.enhancement
 
         # a single enhancement may contain more than one module
         self.module_list = self.__init_modules()
@@ -34,14 +32,16 @@ class ProtoEnhancements:
         """
 
         module_list = []
+        config = self.base_model.config
+        config_fsl = self.base_model.config.model.fsl
 
         if self.name == self.MOD_IPN:
-            if not self.fsl_config.train_n_way == self.fsl_config.test_n_way:
+            if not config_fsl.train_n_way == config_fsl.test_n_way:
                 raise ValueError(
                     f"For distance scaling train/test n_way must be equal " +
-                    f"({self.fsl_config.train_n_way} != {self.fsl_config.test_n_way})"
+                    f"({config_fsl.train_n_way} != {config_fsl.test_n_way})"
                 )
-            n_way = self.fsl_config.train_n_way
+            n_way = config_fsl.train_n_way
             module_list.append(DistScale(n_way * n_way, n_way).to(_CG.DEVICE))
         else:
             module_list.append(None)

@@ -27,7 +27,7 @@ class ProtoRoutine(TrainTest):
 
     def __init__(self, train_test_config: TrainTestConfig, model: Model, dataset: DatasetWrapper):
         super().__init__(train_test_config, model, dataset)
-        self.learning_rate = 0.001
+        self.learning_rate = self.train_test_config.learning_rate # og for protonet 0.001
         self.lr_scheduler_gamma = 0.5
         self.lr_scheduler_step = 20
 
@@ -36,7 +36,7 @@ class ProtoRoutine(TrainTest):
             raise ValueError("fsl field cannot be null in config")
         
         # extra modules (if `enhancement` is specified)
-        self.mod = ProtoEnhancements(self.model, self._model_config.fsl)
+        self.mod = ProtoEnhancements(self.model)
 
     def init_loader(self, split_set: str):
         current_dataset = getattr(self.dataset_wrapper, f"{split_set}_dataset")

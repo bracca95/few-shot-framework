@@ -40,11 +40,10 @@ class ProtoTools:
 
         x = x.unsqueeze(1).expand(n, m, d)
         y = y.unsqueeze(0).expand(n, m, d)
-        square_dist = torch.pow(x - y, 2).sum(2)
+        square_dist = torch.pow(x - y + 1e-6, 2).sum(2)
         
         if sqrt:
-            square_dist = square_dist + 1e-6
-            return torch.sqrt(square_dist)
+            return torch.sqrt(square_dist) # same as nn.F.pairwise_distance(x, y)
         
         return square_dist
     
@@ -189,49 +188,58 @@ class ProtoLoss:
         return loss_val, acc_val
 
     def _contrastive_loss(self, xs_emb: torch.Tensor, n_classes: int, n_support: int) -> torch.Tensor:
-        # https://github.com/KevinMusgrave/pytorch-metric-learning/issues/14#issuecomment-952603383
-        norm_emb = xs_emb / torch.linalg.norm(xs_emb, dim=-1, ord=2, keepdim=True)
-        # norm_emb = (xs_emb - xs_emb.mean()) / xs_emb.std()
-
-        dists_full = ProtoTools.euclidean_dist(norm_emb, norm_emb, sqrt=self.sqrt_eucl)
-        dists = dists_full.triu(diagonal=1)
+        _dists = ProtoTools.euclidean_dist(xs_emb, xs_emb, sqrt=True)
+        dists = _dists.clone()
         
-        #cosine_dists = ProtoTools.cosine_distance(norm_emb, norm_emb)
-        #dists = cosine_dists.triu(diagonal=1) # distance is symmetric, remove them to not compute twice
-
-        if dists.size(0) != dists.size(1) != n_classes * n_support:
-            raise ValueError(f"Tensor must be square-shaped. Found t = {dists.shape}, N = {n_classes} * K = {n_support}")
-
-        r = torch.arange(n_classes * n_support).to(_CG.DEVICE)
-
-        ## numerator
-        numerator_select = r.view(-1, n_support).unsqueeze(1).expand(n_classes, n_support, -1)
-        numerator_sym = dists.view(n_classes, n_support, -1).gather(2, numerator_select)
-        numerator_mask = torch.triu(torch.ones_like(numerator_select), diagonal=1).bool()
-        numerator = numerator_sym[numerator_mask]
-
-        ## denominator
-        all_idxs = r.view(-1, n_classes * n_support).unsqueeze(1).expand(n_classes, n_support, n_classes * n_support)
-        mask = ~torch.any(numerator_select.view(n_classes, n_support, n_support, 1) == all_idxs.view(n_classes, n_support, 1, n_classes * n_support), dim=2)
-        mask_sym = torch.triu(torch.ones_like(dists), diagonal=1).bool().view(n_classes, n_support, -1)
-        final_mask = mask & mask_sym
-        denominator = dists.view(n_classes, n_support, -1)[final_mask]
-
-        # we want a balance for the number of positive and negative pairs, so sample n_support comparison
-        rand_start = torch.randint(0, denominator.size(0) - numerator.size(0), (1,)).item()
-        sample_den = denominator[rand_start : rand_start + numerator.size(0)]
+        mask = torch.eye(dists.size(0)).to(_CG.DEVICE).bool()
+        dists[mask] = float('inf')
         
-        # positive_pairs = torch.pow(numerator.sum(dim=-1), 2)
-        # negative_pairs = sample_den.sum(dim=-1)
-        # neg_margin = torch.pow(torch.max(ProtoTools.ZERO, ProtoLoss.MARGIN - negative_pairs), 2)
+        log_p_y, y_hat = F.log_softmax(-dists, dim=-1).max(dim=1)
+        target_inds = torch.arange(n_classes).unsqueeze(1).expand(-1, n_support).reshape(-1).to(_CG.DEVICE)
+        wrong = torch.where((y_hat // n_support) != target_inds)[0]
+        loss = -log_p_y[wrong].mean()
 
-        # loss = torch.div((positive_pairs + neg_margin), 2 * numerator.size(0))
+        return loss
 
-        p = torch.pow(numerator, 2)
-        n = torch.pow(torch.max(ProtoTools.ZERO, ProtoLoss.MARGIN - sample_den), 2)
-        tot = p + n
-        loss = torch.div(tot.sum(dim=-1), numerator.size(0))    # do not divide by 2 as I used half of the distance matrix
+    def _triplet_loss(self, xs_emb: torch.Tensor, n_classes: int, n_support: int) -> torch.Tensor:
+        """
+        
+        The 'for loop' way:
+        result_neg_list = []
+        result_pos_list = []
+        for n in range(n_classes):
+            lower_bound = n * n_support
+            upper_bound = (n + 1) * n_support - 1
+            
+            neg = (sorted_indices[n, :, :n_support] < lower_bound) | (sorted_indices[n, :, :n_support] > upper_bound)
+            pos = (sorted_indices[n, :, n_support:] >= lower_bound) & (sorted_indices[n, :, n_support:] <= upper_bound)
+            
+            result_neg = sorted_dists[n, :, :n_support][neg]
+            result_pos = sorted_dists[n, :, n_support:][pos]
 
+            result_neg_list.append(result_neg)
+            result_pos_list.append(result_pos)
+
+        # Convert the lists to tensors
+        result_neg_tensor = torch.cat(result_neg_list)
+        result_pos_tensor = torch.cat(result_pos_list)
+        """
+
+        dists = ProtoTools.cosine_distance(xs_emb, xs_emb)
+        sorted_dists, sorted_indices = torch.sort(dists.view(n_classes, n_support, -1))
+
+        lb = torch.arange(start=0, end=(n_support * n_classes), step=n_support, device=_CG.DEVICE).view(n_classes, 1, 1)
+        ub = lb + n_support - 1
+
+        # negatives are != classes found as same (close), positives are == class, found as other (apart)
+        neg = (sorted_indices[:, :, :n_support] < lb) | (sorted_indices[:, :, :n_support] > ub)
+        pos = (sorted_indices[:, :, n_support:] >= lb) & (sorted_indices[:, :, n_support:] <= ub)
+
+        result_neg = sorted_dists[:, :, :n_support][neg]
+        result_pos = sorted_dists[:, :, n_support:][pos]
+
+        loss = torch.max((result_pos - result_neg + ProtoLoss.MARGIN), ProtoTools.ZERO).mean()
+        
         return loss
     
     def _lifted_structured_loss(self, xs_emb: torch.Tensor, n_classes: int, n_support: int) -> torch.Tensor:
