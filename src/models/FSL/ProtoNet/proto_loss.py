@@ -127,7 +127,7 @@ class ProtoTools:
 class ProtoLoss:
 
     GAMMA = 0.5
-    MARGIN = torch.tensor(1.0, dtype=torch.float, device=_CG.DEVICE, requires_grad=False)
+    MARGIN = torch.tensor(0.2, dtype=torch.float, device=_CG.DEVICE, requires_grad=False)
 
     def __init__(self, enhance: ProtoEnhancements, sqrt_eucl: bool, tot_epochs: int, weighted: bool):
         self.enhance = enhance
@@ -250,7 +250,7 @@ class ProtoLoss:
         
         dists = ProtoTools.euclidean_dist(xs_emb, xs_emb, sqrt=self.sqrt_eucl)
         
-        if dists.size(0) != dists.size(1) != n_classes * n_support:
+        if dists.size(0) != dists.size(1) or dists.size(1) != n_classes * n_support:
             raise ValueError(f"Tensor must be square-shaped. Found t = {dists.shape}, N = {n_classes} * K = {n_support}")
 
         r = torch.arange(n_classes * n_support).to(_CG.DEVICE)

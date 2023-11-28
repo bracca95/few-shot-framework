@@ -269,7 +269,7 @@ class ProtoInference:
 
         if self.config.model.fsl is None:
             raise ValueError(f"In config/config.json file, `fsl` cannot be Null")
-        self.mod = ProtoEnhancements(self.model, self.config.model.fsl)
+        self.mod = ProtoEnhancements(self.model)
         self.n_way = self.config.model.fsl.test_n_way
         self.k_shot_s = self.config.model.fsl.test_k_shot_s
         self.k_shot_q = self.config.model.fsl.test_k_shot_q
