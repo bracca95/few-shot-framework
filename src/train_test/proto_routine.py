@@ -36,7 +36,7 @@ class ProtoRoutine(TrainTest):
             raise ValueError("fsl field cannot be null in config")
         
         # extra modules (if `enhancement` is specified)
-        self.mod = ProtoEnhancements(self.model)
+        self.modules = ProtoEnhancements(self.model)
 
     def init_loader(self, split_set: str):
         current_dataset = getattr(self.dataset_wrapper, f"{split_set}_dataset")
@@ -71,8 +71,8 @@ class ProtoRoutine(TrainTest):
         trainloader = self.init_loader(self.train_str)
         valloader = self.init_loader(self.val_str)
 
-        optim_param = [{ "params": self.mod.base_model.parameters() }]
-        optim_param.append({"params": e.parameters() for e in self.mod.module_list if e is not None})
+        optim_param = [{ "params": self.modules.base_model.parameters() }]
+        optim_param.append({"params": e.parameters() for e in self.modules.extra_modules.values()})
         optim_param = [o for o in optim_param if o]
         optim = torch.optim.Adam(params=optim_param, lr=self.learning_rate)
         lr_scheduler = torch.optim.lr_scheduler.StepLR(
@@ -104,12 +104,12 @@ class ProtoRoutine(TrainTest):
 
         for epoch in range(self.train_test_config.epochs):
             Logger.instance().debug(f"=== Epoch: {epoch} ===")
-            self.mod.train()
+            self.modules.train()
             for x, y in tqdm(trainloader):
                 optim.zero_grad()
-                criterion = ProtoLoss(self.mod, sqrt_eucl=True, tot_epochs=self.train_test_config.epochs, weighted=self.W_LOSS)
+                criterion = ProtoLoss(self.modules, sqrt_eucl=True, tot_epochs=self.train_test_config.epochs, weighted=self.W_LOSS)
                 x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
-                model_output = self.mod.base_model(x)
+                model_output = self.modules.base_model(x)
                 criterion.compute_loss(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query, epoch=epoch)
                 loss, acc = (criterion.loss, criterion.acc)
                 loss.backward()
@@ -128,7 +128,7 @@ class ProtoRoutine(TrainTest):
             if avg_acc >= best_acc:
                 Logger.instance().debug(f"Found the best model at epoch {epoch}!")
                 best_acc = avg_acc
-                self.mod.save_models(best_model_path)
+                self.modules.save_models(best_model_path)
 
             if avg_loss["total_loss"] < best_loss:
                 best_loss = avg_loss["total_loss"]
@@ -141,7 +141,7 @@ class ProtoRoutine(TrainTest):
                 avg_loss_eval, avg_acc_eval = self.validate(val_config, valloader, epoch, val_loss, val_acc)
                 if avg_acc_eval >= best_acc:
                     Logger.instance().debug(f"Found the best evaluation model at epoch {epoch}!")
-                    self.mod.save_models(val_model_path)
+                    self.modules.save_models(val_model_path)
 
                 # wandb
                 wdb_dict["val_loss"] = avg_loss_eval
@@ -155,10 +155,10 @@ class ProtoRoutine(TrainTest):
             if epoch == self.train_test_config.epochs-1 or self.check_stop_conditions(avg_loss["total_loss"], best_acc):
                 pth_path = last_val_model_path if valloader is not None else last_model_path
                 Logger.instance().debug(f"STOP: saving last epoch model named `{os.path.basename(pth_path)}`")
-                self.mod.save_models(pth_path)
+                self.modules.save_models(pth_path)
 
                 # wandb: save all models
-                wandb.save(f"{out_folder}/best_model.pth", base_path=os.getcwd())
+                wandb.save(f"{out_folder}/*.pth", base_path=os.getcwd())
 
                 return
 
@@ -167,12 +167,12 @@ class ProtoRoutine(TrainTest):
 
         n_way, k_support, k_query, episodes = (val_config)
         
-        self.mod.eval()
+        self.modules.eval()
         with torch.no_grad():
             for x, y in valloader:
-                criterion = ProtoLoss(self.mod, sqrt_eucl=True, tot_epochs=self.train_test_config.epochs, weighted=self.W_LOSS)
+                criterion = ProtoLoss(self.modules, sqrt_eucl=True, tot_epochs=self.train_test_config.epochs, weighted=self.W_LOSS)
                 x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
-                model_output = self.mod.base_model(x)
+                model_output = self.modules.base_model(x)
                 criterion.compute_loss(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query, epoch=epoch)
                 _, acc = (criterion.loss, criterion.acc)
                 ProtoLoss.append_epoch_loss(val_loss, criterion.loss_dict)
@@ -201,7 +201,7 @@ class ProtoRoutine(TrainTest):
             Logger.instance().error(f"{ve.args}. No test performed")
             return
 
-        self.mod.load_models(model_path)
+        self.modules.load_models(model_path)
         
         legacy_avg_acc = list()
         acc_per_epoch = { i: torch.FloatTensor().to(_CG.DEVICE) for i in range(len(self.test_info.keys())) }
@@ -211,17 +211,17 @@ class ProtoRoutine(TrainTest):
 
         n_way, k_support, k_query = (self._model_config.fsl.test_n_way, self._model_config.fsl.test_k_shot_s, self._model_config.fsl.test_k_shot_q)
         
-        self.mod.eval()
+        self.modules.eval()
         with torch.no_grad():
             for epoch in tqdm(range(10)):
                 tr = TestResult()
                 score_per_class = { i: torch.FloatTensor().to(_CG.DEVICE) for i in range(len(self.test_info.keys())) }
                 for x, y in testloader:
                     x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
-                    y_pred = self.mod.base_model(x)
+                    y_pred = self.modules.base_model(x)
 
                     # (overall accuracy [legacy], accuracy per class)
-                    legacy_acc, acc_vals = tr.proto_test(y_pred, target=y, n_way=n_way, n_support=k_support, n_query=k_query, enhance=self.mod, sqrt_eucl=True)
+                    legacy_acc, acc_vals = tr.proto_test(y_pred, target=y, n_way=n_way, n_support=k_support, n_query=k_query, enhance=self.modules, sqrt_eucl=True)
                     legacy_avg_acc.append(legacy_acc.item())
                     for k, v in acc_vals.items():
                         score_per_class[k] = torch.cat((score_per_class[k], v.reshape(1,)))

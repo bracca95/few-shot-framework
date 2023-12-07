@@ -1,7 +1,7 @@
 {
     "experiment_name": "disabled",
     "dataset": {
-        "dataset_path": "/media/lorenzo/M/datasets/miniimagenet",
+        "dataset_path": "/media/lorenzo/D/datasets/miniimagenet",
         "dataset_type": "miniimagenet",
         "dataset_splits": [
             0.7,

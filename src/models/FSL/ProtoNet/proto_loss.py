@@ -108,12 +108,12 @@ class ProtoTools:
         dists = ProtoTools.euclidean_dist(q_batch.view(-1, n_feat), protos, sqrt_eucl)
         ### EOF: vanilla protonet
 
-        if enhance.name == ProtoEnhancements.MOD_IPN:
+        if enhance.name == ProtoEnhancements.ENH_IPN:
             proto_dists = ProtoTools.euclidean_dist(s_batch.view(-1, n_feat), protos, sqrt_eucl)
             mean_dists = torch.mean(proto_dists.view(n_classes, -1, n_classes), dim=1)
-            alphas = enhance.module_list[0].forward(mean_dists)
+            alphas = enhance.extra_modules[ProtoEnhancements.MOD_DISTSCALE].forward(mean_dists)
             dists = dists / alphas
-        elif enhance.name == ProtoEnhancements.MOD_DIST:
+        elif enhance.name == ProtoEnhancements.ENH_DIST:
             proto_dists = ProtoTools.euclidean_dist(s_batch.view(-1, n_feat), protos, sqrt_eucl)
             query_dists = ProtoTools.euclidean_dist(q_batch.view(-1, n_feat), protos, sqrt_eucl)
             mean_dists = torch.mean(proto_dists.view(n_classes, -1, n_classes), dim=1)
@@ -142,6 +142,7 @@ class ProtoLoss:
         self.acc: torch.Tensor = torch.FloatTensor([]).to(_CG.DEVICE)
         self.proto_loss: torch.Tensor = torch.FloatTensor([]).to(_CG.DEVICE)
         self.contrastive_loss: Optional[torch.Tensor] = None
+        self.soft_loss: Optional[torch.Tensor] = None
 
         # must be updated
         self.loss: torch.Tensor = self.__init_loss()
@@ -149,29 +150,39 @@ class ProtoLoss:
 
     def compute_loss(self, recons: torch.Tensor, target: torch.Tensor, n_way: int, n_support: int, n_query: int, epoch: int):
         s_batch, q_batch = ProtoTools.split_support_query(recons, target, n_way, n_support, n_query)
-        
+
         ## compute required losses 
-        # contrastive (lifted-structured) loss
-        if self.enhance.name == ProtoEnhancements.MOD_APN:
-            self.contrastive_loss = self._lifted_structured_loss(s_batch.view(n_way * n_support, -1), n_way, n_support)
-            self.loss_dict["contrastive_loss"] = self.contrastive_loss
+        # contrastive loss
+        if self.enhance.name == ProtoEnhancements.ENH_APN or self.enhance.name == ProtoEnhancements.ENH_CONTR_LSTM:
+            self.contrastive_loss = self._soft_nn_loss(s_batch.view(n_way * n_support, -1), n_way, n_support)
+            self.loss_dict["contrastive_loss"] = self.contrastive_loss.detach()
+
+        if self.enhance.name == ProtoEnhancements.ENH_AUTOCORR:
+            self.soft_loss = self._soft_nn_loss(s_batch.view(n_way * n_support, -1), n_way, n_support)
+            self.contrastive_loss = self._barlow_cc_loss(s_batch.view(n_way * n_support, -1), n_way, n_support)
+            self.loss_dict["soft_loss"] = self.soft_loss.detach()
+            self.loss_dict["contrastive_loss"] = self.contrastive_loss.detach()
 
         # prototypical loss
         self.proto_loss, self.acc = self._proto_loss(s_batch, q_batch, n_way, n_query)
-        self.loss_dict["proto_loss"] = self.proto_loss
+        self.loss_dict["proto_loss"] = self.proto_loss.detach()
         ##
 
         # udpate values
         self.loss = self.proto_loss
+        
         if self.contrastive_loss is not None:
             if self.weighted:
                 gamma = self.gammas[epoch]
                 self.loss = ((1.0 - gamma) * self.proto_loss) + (gamma * self.contrastive_loss)
             else:
-                self.loss = self.proto_loss + self.contrastive_loss
+                self.loss = self.loss + self.contrastive_loss
+        
+        if self.soft_loss is not None:
+            self.loss = self.loss + self.soft_loss
         
         # final
-        self.loss_dict["total_loss"] = self.loss
+        self.loss_dict["total_loss"] = self.loss.detach()
 
     def _proto_loss(self, s_batch: torch.Tensor, q_batch: torch.Tensor, n_way: int, n_query: int) -> Tuple[torch.Tensor, torch.Tensor]:
         dists = ProtoTools.get_dists(s_batch, q_batch, self.enhance, sqrt_eucl=self.sqrt_eucl)
@@ -186,18 +197,44 @@ class ProtoLoss:
         acc_val = y_hat.eq(target_inds.squeeze(2)).float().mean()
 
         return loss_val, acc_val
+    
+    def _soft_nn_loss(self, xs_emb: torch.Tensor, n_classes: int, n_support: int) -> torch.Tensor:
+        bs = n_classes * n_support
+        main_mask = ~torch.eye(bs, dtype=torch.bool, device=_CG.DEVICE).view(bs, 1, bs)
+        r = torch.arange(bs).to(_CG.DEVICE).detach()
 
-    def _contrastive_loss(self, xs_emb: torch.Tensor, n_classes: int, n_support: int) -> torch.Tensor:
-        _dists = ProtoTools.euclidean_dist(xs_emb, xs_emb, sqrt=True)
-        dists = _dists.clone()
+        dists = ProtoTools.euclidean_dist(xs_emb, xs_emb).unsqueeze(0).view(n_classes, n_support, -1)
+
+        # numerator
+        num_sel = r.view(-1, n_support).unsqueeze(1).expand(n_classes, n_support, -1)
+        numerator_mask = torch.zeros_like(dists, dtype=torch.bool, requires_grad=False)
+        numerator_mask = numerator_mask.scatter_(2, num_sel, True).view(bs, 1, bs)
+        numerator_mask = numerator_mask & main_mask
+        numerator = dists.view(bs, 1, -1)[numerator_mask].view(bs, 1, -1)
+        exp_num_sum = torch.exp(-numerator).sum(dim=-1)
+
+        # denominator
+        denominator = dists.view(bs, 1, -1)[main_mask].view(bs, 1, -1)
+        exp_den_sum = torch.exp(-denominator).sum(dim=-1)
+
+        # log sum
+        log_sum = torch.log(torch.div(exp_num_sum, (exp_den_sum + 1e-6)) + 1e-6).flatten().sum()
         
-        mask = torch.eye(dists.size(0)).to(_CG.DEVICE).bool()
-        dists[mask] = float('inf')
-        
-        log_p_y, y_hat = F.log_softmax(-dists, dim=-1).max(dim=1)
-        target_inds = torch.arange(n_classes).unsqueeze(1).expand(-1, n_support).reshape(-1).to(_CG.DEVICE)
-        wrong = torch.where((y_hat // n_support) != target_inds)[0]
-        loss = -log_p_y[wrong].mean()
+        # loss
+        loss = torch.div(-log_sum, bs)
+        return loss
+
+    def _barlow_cc_loss(self, xs_emb: torch.Tensor, n_classes: int, n_support: int) -> torch.Tensor:
+        const = 5e-3
+        xs_norm = F.normalize(xs_emb, p=2, dim=-1) # no need to norm since need not be orthonormal
+        autocorr = torch.matmul(xs_norm, xs_norm.t())
+        id_mat = torch.eye(autocorr.size(0), device=autocorr.device)
+
+        # loss
+        c_diff = (autocorr - id_mat).pow(2)
+        mask_off_diag = ~torch.eye(c_diff.size(0), dtype=torch.bool)
+        c_diff_off_diag = c_diff[mask_off_diag] * const
+        loss = c_diff_off_diag.sum() #+ c_diff.diag().sum()
 
         return loss
 
