@@ -3,6 +3,7 @@ import torch
 from typing import Optional, Tuple, List
 from torch.nn import functional as F
 
+from src.models.pretrained.classification_head import ManifoldMixup
 from src.models.FSL.ProtoNet.proto_extra_modules import ProtoEnhancements
 from lib.glass_defect_dataset.config.consts import General as _CG
 from lib.glass_defect_dataset.src.utils.tools import Tools, Logger
@@ -73,9 +74,11 @@ class ProtoTools:
 
         support_set = img[support_idxs.flatten()]
         query_set = img[query_idxs.flatten()]
+        support_labels = labels[support_idxs.flatten()]
+        query_labels = labels[query_idxs.flatten()]
 
-        # support_batch, support_label, query_batch, query_label
-        return support_set, support_idxs.flatten(), query_set, query_idxs.flatten()
+        # support_batch, query_batch
+        return support_set, support_labels, query_set, query_labels
     
     @staticmethod
     def split_support_query(recons: torch.Tensor, target: torch.Tensor, n_way: int, n_support: int, n_query: int) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -122,6 +125,40 @@ class ProtoTools:
             pass
         
         return dists
+    
+    @staticmethod
+    def plot_tsne(embeddings: torch.Tensor, n_classes: int, n_support: int, epoch: Optional[int]=None):
+        import os
+        import numpy as np
+        import matplotlib.pyplot as plt
+        from sklearn.manifold import TSNE
+
+        if not len(embeddings.shape) == 2:
+            Logger.instance.warning(f"Failed t-sne: embeddings should have 2 dim, have {len(embeddings.shape)} instead")
+
+        if not embeddings.device == torch.device("cpu"):
+            embeddings = embeddings.detach().cpu()
+
+        labels = np.repeat(np.arange(n_classes), n_support)
+        data_np = embeddings.numpy()
+
+        # reduce the dimensionality to 2D
+        tsne = TSNE(n_components=2, random_state=42)
+        data_tsne = tsne.fit_transform(data_np)
+
+        # plot t-SNE with colored points based on classes
+        plt.figure(figsize=(8, 6))
+        for class_label in range(n_classes):
+            mask = (labels == class_label)
+            plt.scatter(data_tsne[mask, 0], data_tsne[mask, 1], label=f"class {class_label}")
+
+        ep = f"_epoch_{epoch}" if epoch is not None else ""
+        filename = os.path.join(os.getcwd(), "output", f"tsne_epoch{ep}.png")
+        plt.title('t-SNE Visualization with Class Colors')
+        plt.xlabel('x')
+        plt.ylabel('y')
+        plt.legend()
+        plt.savefig(filename)
     
 
 class ProtoLoss:
@@ -183,6 +220,83 @@ class ProtoLoss:
         
         # final
         self.loss_dict["total_loss"] = self.loss.detach()
+
+    def new_compute_loss(
+            self, 
+            xs_emb: torch.Tensor,
+            xq_emb: torch.Tensor,
+            shuffle: torch.Tensor,
+            lam: float,
+            n_way: int,
+            n_support: int,
+            n_query: int
+        ) -> Tuple[torch.Tensor, torch.Tensor]:
+
+        # contrastive loss
+        if self.enhance.name == ProtoEnhancements.ENH_APN or self.enhance.name == ProtoEnhancements.ENH_CONTR_LSTM:
+            self.contrastive_loss = self._soft_nn_loss(xs_emb, n_way, n_support)
+            self.loss_dict["contrastive_loss"] = self.contrastive_loss.detach()
+
+        # contrastive loss + soft loss
+        if self.enhance.name == ProtoEnhancements.ENH_AUTOCORR:
+            self.soft_loss = self._soft_nn_loss(xs_emb, n_way, n_support)
+            self.contrastive_loss = self._barlow_cc_loss(xs_emb, n_way, n_support)
+            self.loss_dict["soft_loss"] = self.soft_loss.detach()
+            self.loss_dict["contrastive_loss"] = self.contrastive_loss.detach()
+
+        # prototypical loss
+        self.proto_loss, self.acc = self._proto_loss_mmix(
+            xs_emb.view(n_way, n_support, -1),
+            xq_emb.view(n_way, n_query, -1),
+            shuffle,
+            lam,
+            n_way,
+            n_query
+        )
+        self.loss_dict["proto_loss"] = self.proto_loss.detach()
+        ##
+
+        # udpate values
+        self.loss = self.proto_loss
+        
+        if self.contrastive_loss is not None:
+            self.loss = self.loss + self.contrastive_loss
+        
+        if self.soft_loss is not None:
+            self.loss = self.loss + self.soft_loss
+        
+        # final
+        self.loss_dict["total_loss"] = self.loss.detach()
+
+        return self.loss, self.acc
+
+    def _proto_loss_mmix(
+            self,
+            s_batch: torch.Tensor,
+            q_batch: torch.Tensor,
+            shuffle: torch.Tensor,
+            lam: float,
+            n_way: int,
+            n_query: int
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        dists = ProtoTools.get_dists(s_batch, q_batch, self.enhance, sqrt_eucl=self.sqrt_eucl)
+
+        log_p_y = F.log_softmax(-dists, dim=1)
+
+        # build one-hot targets
+        one_hot_labels = torch.eye(n_way, dtype=torch.float, device=_CG.DEVICE)
+        one_hot_labels = one_hot_labels.unsqueeze(1).expand(n_way, n_query, n_way).reshape(-1, n_way)
+        mixed_labels = ManifoldMixup.mixup(one_hot_labels, shuffle, lam)
+
+        # loss
+        loss_val = -(mixed_labels * log_p_y + 1e-10).sum(dim=-1).mean()
+
+        # accuracy
+        _, y_hat = log_p_y.max(-1)
+        _, y_mix = mixed_labels.max(-1)
+        acc_val = y_hat.eq(y_mix).float().mean()
+
+        return loss_val, acc_val
 
     def _proto_loss(self, s_batch: torch.Tensor, q_batch: torch.Tensor, n_way: int, n_query: int) -> Tuple[torch.Tensor, torch.Tensor]:
         dists = ProtoTools.get_dists(s_batch, q_batch, self.enhance, sqrt_eucl=self.sqrt_eucl)

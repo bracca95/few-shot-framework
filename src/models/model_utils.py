@@ -6,7 +6,7 @@ from src.models.CNN.cnn_basic import CNN
 from src.models.CNN.cnn_105 import CNN105
 from src.models.FSL.ProtoNet.protonet import ProtoNet
 from src.models.pretrained.extractors import TimmFeatureExtractor
-from src.models.pretrained.classification_head import ClassificationHead
+from src.models.pretrained.classification_head import ClassificationHead, ManifoldMixup
 from src.models.yolov8 import YoloTrain, YoloInference
 from src.utils.config_parser import Config
 from lib.glass_defect_dataset.src.utils.tools import Logger
@@ -49,6 +49,18 @@ class ModelBuilder:
             return CNN(config)
         if model_name == "cnn105":
             return CNN105(config)
+        if model_name == "mmix":
+            in_channels = 1 if config.dataset.dataset_mean is None else len(config.dataset.dataset_mean)
+            extr = TimmFeatureExtractor(
+                config,
+                "resnet18",
+                pretrained=config.model.pretrained,
+                in_chans=in_channels,
+                pooled=True,
+                mean=config.dataset.dataset_mean,
+                std=config.dataset.dataset_std
+            )
+            return ManifoldMixup(config, extr, 256)
         if model_name in ("resnet50", "resnet18", "hrnet_w18", "vit_tiny_patch16_224"):
             in_channels = 1 if config.dataset.dataset_mean is None else len(config.dataset.dataset_mean)
             return TimmFeatureExtractor(

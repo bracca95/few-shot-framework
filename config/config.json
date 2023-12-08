@@ -25,7 +25,7 @@
         ]
     },
     "model": {
-        "model_name": "resnet18",
+        "model_name": "mmix",
         "freeze": false,
         "pretrained": false,
         "fsl": {

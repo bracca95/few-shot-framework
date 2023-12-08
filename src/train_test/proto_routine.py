@@ -10,7 +10,7 @@ from typing import Optional, List, Tuple
 
 from src.models.model import Model
 from src.models.FSL.ProtoNet.proto_batch_sampler import PrototypicalBatchSampler
-from src.models.FSL.ProtoNet.proto_loss import ProtoLoss, TestResult, InferenceResult
+from src.models.FSL.ProtoNet.proto_loss import ProtoLoss, ProtoTools, TestResult, InferenceResult
 from src.models.FSL.ProtoNet.proto_extra_modules import ProtoEnhancements
 from src.train_test.routine import TrainTest
 from src.utils.config_parser import TrainTest as TrainTestConfig
@@ -105,12 +105,28 @@ class ProtoRoutine(TrainTest):
         for epoch in range(self.train_test_config.epochs):
             Logger.instance().debug(f"=== Epoch: {epoch} ===")
             self.modules.train()
-            for x, y in tqdm(trainloader):
+            for episode, (x, y) in enumerate(tqdm(trainloader, total=len(trainloader))):
                 optim.zero_grad()
                 criterion = ProtoLoss(self.modules, sqrt_eucl=True, tot_epochs=self.train_test_config.epochs, weighted=self.W_LOSS)
                 x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
-                model_output = self.modules.base_model(x)
-                criterion.compute_loss(model_output, target=y, n_way=n_way, n_support=k_support, n_query=k_query, epoch=epoch)
+                xs, _, xq, _ = ProtoTools.split_batch(x, y, n_way, k_support)
+
+                # mixup - only for targets (queries)
+                alpha = 2
+                lam = torch.distributions.Beta(alpha, alpha).sample((1,)).item()
+                shuffle = torch.randperm(xq.size(0))
+
+                # run models: query should be mixed
+                xs_emb = self.modules.base_model(xs)
+                xq_emb = self.modules.base_model(xq, shuffle, lam)
+
+                # plot t-sne
+                if epoch == 0 and episode == 0:
+                    ProtoTools.plot_tsne(xs_emb, n_way, k_support, 0)
+                if episode == (self._model_config.fsl.episodes-1):
+                    ProtoTools.plot_tsne(xs_emb, n_way, k_support, (self._model_config.fsl.episodes-1))
+
+                criterion.new_compute_loss(xs_emb, xq_emb, shuffle, lam, n_way, k_support, k_query)
                 loss, acc = (criterion.loss, criterion.acc)
                 loss.backward()
                 optim.step()
@@ -169,7 +185,7 @@ class ProtoRoutine(TrainTest):
         
         self.modules.eval()
         with torch.no_grad():
-            for x, y in valloader:
+            for episode, (x, y) in enumerate(tqdm(valloader, total=len(valloader))):
                 criterion = ProtoLoss(self.modules, sqrt_eucl=True, tot_epochs=self.train_test_config.epochs, weighted=self.W_LOSS)
                 x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
                 model_output = self.modules.base_model(x)
@@ -216,9 +232,14 @@ class ProtoRoutine(TrainTest):
             for epoch in tqdm(range(10)):
                 tr = TestResult()
                 score_per_class = { i: torch.FloatTensor().to(_CG.DEVICE) for i in range(len(self.test_info.keys())) }
-                for x, y in testloader:
+                for episode, (x, y) in enumerate(testloader):
                     x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
                     y_pred = self.modules.base_model(x)
+
+                    # plot t-sne
+                    if episode == 0:
+                        s_batch, _ = ProtoTools.split_support_query(y_pred, y, n_way, k_support, k_query)
+                        ProtoTools.plot_tsne(s_batch.view(n_way * k_support, -1), n_way, k_support, 1)
 
                     # (overall accuracy [legacy], accuracy per class)
                     legacy_acc, acc_vals = tr.proto_test(y_pred, target=y, n_way=n_way, n_support=k_support, n_query=k_query, enhance=self.modules, sqrt_eucl=True)
