@@ -3,6 +3,7 @@ import sys
 import torch
 import wandb
 import numpy as np
+import pandas as pd
 
 from tqdm import tqdm
 from torch.utils.data import DataLoader
@@ -10,7 +11,7 @@ from typing import Optional, List, Tuple
 
 from src.models.model import Model
 from src.models.FSL.ProtoNet.proto_batch_sampler import PrototypicalBatchSampler
-from src.models.FSL.ProtoNet.proto_loss import ProtoLoss, TestResult, InferenceResult
+from src.models.FSL.ProtoNet.proto_loss import ProtoLoss, TestResult, InferenceResult, FullInferenceResult
 from src.models.FSL.ProtoNet.proto_extra_modules import ProtoEnhancements
 from src.train_test.routine import TrainTest
 from src.utils.config_parser import TrainTest as TrainTestConfig
@@ -366,3 +367,46 @@ class ProtoInference:
         images, labels, paths = zip(*sorted_batch)
 
         return torch.stack(images, dim=0), torch.LongTensor(labels), paths
+    
+
+class ProtoFullInference(ProtoInference):
+
+    SUPPORT = os.path.join("tmp", "support")
+    QUERY = os.path.join("tmp", 'query')
+
+    def __init__(self, config: Config, model: Model, support_set: GlassOpt, query_set: GlassOpt, bb_file: pd.DataFrame):
+        super().__init__(config, model, support_set, query_set)
+        self.bb_file = bb_file
+
+    def test(self, model_path: str):
+        Logger.instance().debug("Start inference")
+
+        try:
+            model_path = Tools.validate_path(model_path)
+            self.mod.load_models(model_path)
+        except FileNotFoundError as fnf:
+            Logger.instance().critical(f"model not found: {fnf.args}")
+            sys.exit(-1)
+        except ValueError as ve:
+            Logger.instance().error(f"{ve.args}. No test performed")
+            return
+
+        support_loader = self._init_support_loader()
+        query_loader = self._init_query_loader()
+
+        self.mod.eval()
+        with torch.no_grad():
+            # load support batch (always the same)
+            sx, sy, _ = next(iter(support_loader))
+            sx, sy = sx.to(_CG.DEVICE), sy.to(_CG.DEVICE)
+            s_emb = self.mod.base_model(sx)
+            dim = s_emb.size(-1)
+
+            ir = FullInferenceResult(
+                self.mod, s_emb, self.n_way, self.k_shot_s, dim, 
+                self.support_set.idx_to_label, self.query_set.idx_to_label, self.bb_file, True
+            )
+            ir.proto_inference(query_loader)
+            ir.provide_output()
+
+        wandb.save(f"{os.path.join(os.getcwd(), 'output/log.log')}", base_path=os.getcwd())

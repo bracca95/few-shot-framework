@@ -1,4 +1,7 @@
+import os
+import json
 import torch
+import pandas as pd
 
 from typing import Optional, Tuple, List
 from torch.nn import functional as F
@@ -380,15 +383,15 @@ class InferenceResult:
     COL_PREDICT = "predict"
 
     def __init__(
-            self,
-            enhance: ProtoEnhancements,
-            s_emb: torch.Tensor,
-            n_way: int,
-            k_shot_s: int,
-            dim: int,
-            idx_to_label: dict,
-            sqrt_eucl: bool
-        ):
+        self,
+        enhance: ProtoEnhancements,
+        s_emb: torch.Tensor,
+        n_way: int,
+        k_shot_s: int,
+        dim: int,
+        idx_to_label: dict,
+        sqrt_eucl: bool
+    ):
         import pandas as pd
 
         self.model = enhance
@@ -479,3 +482,103 @@ class InferenceResult:
         wandb.save(f"{os.path.join(mismatch_dir, '*.png')}", base_path=os.getcwd())
         wandb.save(f"{os.path.join(os.getcwd(), 'output/score.csv')}", base_path=os.getcwd())
         return acc_overall, acc_vals, recall, precision
+    
+
+class FullInferenceResult:
+
+    def __init__(
+        self,
+        enhance: ProtoEnhancements,
+        s_emb: torch.Tensor,
+        n_way: int,
+        k_shot_s: int,
+        dim: int,
+        idx_to_label_support: dict,
+        idx_to_label_query: dict,
+        bb_file: pd.DataFrame,
+        sqrt_eucl: bool
+    ):
+        self.model = enhance
+        self.s_emb = s_emb
+        self.n_way = n_way
+        self.k_shot_s = k_shot_s
+        self.dim = dim
+        self.idx_to_label_support = idx_to_label_support
+        self.idx_to_label_query = idx_to_label_query
+        self.bb_file  = bb_file
+        self.sqrt_eucl = sqrt_eucl
+
+        # overall values
+        self.path: List[str] = list()
+        self.qy = torch.tensor([], dtype=torch.float, device=_CG.DEVICE, requires_grad=False)
+        self.y_hat = torch.tensor([], dtype=torch.float, device=_CG.DEVICE, requires_grad=False)
+
+    def proto_inference(self, query_loader):
+        # load all queries in batches
+        for qx, qy, path in query_loader:
+            qx, qy = qx.to(_CG.DEVICE), qy.to(_CG.DEVICE)
+            q_emb = self.model.base_model(qx)
+
+            # manage last batch (likely to have less samples than n_way * k_shot and we do not want padding)
+            s_emb = self.s_emb.view(self.n_way, self.k_shot_s, -1)
+            if q_emb.size(0) % self.n_way == 0:
+                q_emb = q_emb.view(self.n_way, -1, self.dim)
+            else:
+                q_emb = q_emb.view(-1, q_emb.size(0), self.dim)
+
+            # predict
+            dists = ProtoTools.get_dists(s_emb, q_emb, self.model, sqrt_eucl=True)
+            log_p_y = torch.nn.functional.log_softmax(-dists, dim=1)
+            _, y_hat = log_p_y.max(-1)
+
+            # collect values
+            self.path.extend(path)
+            self.qy = torch.cat((self.qy, qy))
+            self.y_hat = torch.cat((self.y_hat, y_hat))
+
+    def provide_output(self):
+        df = self.bb_file.copy()
+        prediction = { }
+
+        new_class_list: List[str] = list()
+        defect_id_list: List[int] = list()
+
+        y_hat = [self.idx_to_label_support[l] for l in self.y_hat.cpu().numpy().astype(int).tolist()]
+        
+        for i in range(len(self.path)):
+            _, def_idplus = os.path.basename(self.path[i]).rsplit("_did_", 1)
+            defect_id = int(def_idplus.rsplit("_vid_", 1)[0])
+            new_class = y_hat[i]
+
+            new_class_list.append(new_class)
+            defect_id_list.append(defect_id)
+
+        new_df = pd.DataFrame({"#id_defect": defect_id_list, "#class_key": new_class_list})
+        filtered_df = df[df["#id_defect"].isin(defect_id_list)]
+
+        # merge the dataframes based on the id_defect column
+        merged_df = pd.merge(filtered_df, new_df, on="#id_defect", how="left", suffixes=("_original", "_new"))
+        
+        # stat matrix (somehow)
+        for idx, row in merged_df.iterrows():
+            if f'{row["#class_key_original"]}_as_{row["#class_key_new"]}' in prediction.keys():
+                prediction[f'{row["#class_key_original"]}_as_{row["#class_key_new"]}'] += 1
+            else:
+                prediction[f'{row["#class_key_original"]}_as_{row["#class_key_new"]}'] = 1
+            
+            # store total number
+            if f'TOT_{row["#class_key_original"]}' in prediction.keys():
+                prediction[f'TOT_{row["#class_key_original"]}'] += 1
+            else:
+                prediction[f'TOT_{row["#class_key_original"]}'] = 1
+        
+        # replace names
+        merged_df["#class_key_original"] = merged_df["#class_key_new"].fillna(merged_df["#class_key_original"])
+        merged_df = merged_df.rename(columns={"#class_key_original": "#class_key"})
+        merged_df = merged_df.drop(["#class_key_new"], axis=1)
+
+        # save
+        merged_df.to_csv(os.path.join(os.getcwd(), "output", "bounding_boxes.csv"))
+        with open(os.path.join(os.getcwd(), "output", "out_stat_matrix.json"), "w") as f:
+            json.dump(prediction, f, indent=4)
+        

@@ -1,12 +1,12 @@
 {
     "experiment_name": "disabled",
     "dataset": {
-        "dataset_path": "/media/lorenzo/D/datasets/miniimagenet",
-        "dataset_type": "miniimagenet",
+        "dataset_path": "/media/lorenzo/M/datasets/dmx/dataset_opt",
+        "dataset_type": "full_inference",
         "dataset_splits": [
-            0.7,
             0.0,
-            0.3
+            0.0,
+            1.0
         ],
         "normalize": true,
         "crop_size": 30,
@@ -14,14 +14,12 @@
         "augment_online": null,
         "augment_offline": null,
         "dataset_mean": [
-            0.48500001430511475,
-            0.4560000002384186,
-            0.4059999883174896
+            0.5305823087692261,
+            0.01905783638358116
         ],
         "dataset_std": [
-            0.2290000021457672,
-            0.2240000069141388,
-            0.22499999403953552
+            0.044519901275634766,
+            0.03284108638763428
         ]
     },
     "model": {
@@ -30,19 +28,19 @@
         "pretrained": false,
         "fsl": {
             "episodes": 100,
-            "train_n_way": 10,
+            "train_n_way": 4,
             "train_k_shot_s": 5,
             "train_k_shot_q": 5,
-            "test_n_way": 10,
+            "test_n_way": 4,
             "test_k_shot_s": 5,
             "test_k_shot_q": 5,
-            "enhancement": "apn"
+            "enhancement": null
         }
     },
     "train_test": {
         "epochs": 100,
         "batch_size": 6,
-        "model_test_path": null,
+        "model_test_path": "resnet_18_opt.pth",
         "learning_rate": 0.001,
         "optimizer": null
     }

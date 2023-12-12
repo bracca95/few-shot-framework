@@ -8,9 +8,9 @@ import argparse
 
 from src.models.model_utils import ModelBuilder, YoloModelBuilder
 from src.train_test.routine_utils import RoutineBuilder
-from src.train_test.proto_routine import ProtoInference
+from src.train_test.proto_routine import ProtoInference, ProtoFullInference
 from src.utils.config_parser import Config, read_from_json, write_to_json
-from lib.glass_defect_dataset.src.datasets.dataset_utils import DatasetBuilder, YoloDatasetBuilder
+from lib.glass_defect_dataset.src.datasets.dataset_utils import DatasetBuilder, YoloDatasetBuilder, FullInferenceBuilder
 from lib.glass_defect_dataset.src.datasets.dataset import DatasetLauncher
 from lib.glass_defect_dataset.src.utils.tools import Logger
 from lib.glass_defect_dataset.config.consts import General as _CG
@@ -74,6 +74,33 @@ def run_inference(config: Config):
     infer.test(config.train_test.model_test_path)
     wandb.finish()
 
+def run_full_inference(config: Config):
+    ds_store = FullInferenceBuilder.load_dataset(config.dataset)
+    # DEBUG remove comment
+    #ds_store.save_exact_defect(margin=5)
+    df = ds_store.csv._df
+    
+    import copy
+    support_set_config = copy.deepcopy(config.dataset)
+    query_set_config = copy.deepcopy(config.dataset)
+
+    # override support and query paths
+    support_set_config.dataset_path = os.path.join(support_set_config.dataset_path, ProtoFullInference.SUPPORT)
+    query_set_config.dataset_path = os.path.join(query_set_config.dataset_path, ProtoFullInference.QUERY)
+
+    # load both dataset separately
+    support_set = DatasetBuilder.load_dataset(support_set_config)
+    query_set = DatasetBuilder.load_dataset(query_set_config)
+
+    # load model
+    model = ModelBuilder.load_model(config, len(support_set.label_to_idx.keys()))
+    model = model.to(_CG.DEVICE)
+    
+    init_wandb(config)
+    infer = ProtoFullInference(config, model, support_set, query_set, df)
+    infer.test(config.train_test.model_test_path)
+    wandb.finish()
+
 def main(config_path: str):
     try:
         config = read_from_json(config_path)
@@ -85,6 +112,11 @@ def main(config_path: str):
     if "yolo" in config.dataset.dataset_type:
         run_yolo(config)
         Logger.instance().debug(f"YOLO ended its execution. Quitting...")
+        sys.exit(0)
+
+    if "full_inference" in config.dataset.dataset_type:
+        run_full_inference(config)
+        Logger.instance().debug(f"Full Inference ended")
         sys.exit(0)
 
     # check if inference mode
