@@ -4,6 +4,7 @@ from src.models.model import Model
 from src.models.MLP.mlp_basic import MLP
 from src.models.CNN.cnn_basic import CNN
 from src.models.CNN.cnn_105 import CNN105
+from src.models.CNN.resnet_mmix import ResNetMixup, SEBottleneck, SEBasicBlock
 from src.models.FSL.ProtoNet.protonet import ProtoNet
 from src.models.pretrained.extractors import TimmFeatureExtractor
 from src.models.pretrained.classification_head import ClassificationHead, ManifoldMixup
@@ -50,17 +51,7 @@ class ModelBuilder:
         if model_name == "cnn105":
             return CNN105(config)
         if model_name == "mmix":
-            in_channels = 1 if config.dataset.dataset_mean is None else len(config.dataset.dataset_mean)
-            extr = TimmFeatureExtractor(
-                config,
-                "resnet18",
-                pretrained=config.model.pretrained,
-                in_chans=in_channels,
-                pooled=True,
-                mean=config.dataset.dataset_mean,
-                std=config.dataset.dataset_std
-            )
-            return ManifoldMixup(config, extr, 256)
+            return ResNetMixup(config, SEBasicBlock, [2, 2, 2, 2], 256)
         if model_name in ("resnet50", "resnet18", "hrnet_w18", "vit_tiny_patch16_224"):
             in_channels = 1 if config.dataset.dataset_mean is None else len(config.dataset.dataset_mean)
             return TimmFeatureExtractor(
