@@ -5,6 +5,7 @@ from src.models.MLP.mlp_basic import MLP
 from src.models.CNN.cnn_basic import CNN
 from src.models.CNN.cnn_105 import CNN105
 from src.models.CNN.resnet_mmix import ResNetMixup, SEBottleneck, SEBasicBlock
+from src.models.CNN.resnet12 import ResNet12
 from src.models.FSL.ProtoNet.protonet import ProtoNet
 from src.models.pretrained.extractors import TimmFeatureExtractor
 from src.models.pretrained.classification_head import ClassificationHead, ManifoldMixup
@@ -40,6 +41,15 @@ class ModelBuilder:
             else:
                 raise ValueError("No 'compare' model available.")
             return ClassificationHead(config, extractor, out_classes)
+        
+        if "mmix" in model_name:
+            model_name_stripped = model_name.replace("mmix", "")
+            if model_name_stripped == "resnet18":
+                return ResNetMixup(config, SEBasicBlock, [2, 2, 2, 2], 256)
+            elif model_name_stripped == "resnet12":
+                return ResNet12(config, attention=True)
+            else:
+                raise ValueError(f"{model_name_stripped} backbone not defined for mmix")
             
         # few-shot learning models
         if model_name == "default":
@@ -50,8 +60,6 @@ class ModelBuilder:
             return CNN(config)
         if model_name == "cnn105":
             return CNN105(config)
-        if model_name == "mmix":
-            return ResNetMixup(config, SEBasicBlock, [2, 2, 2, 2], 256)
         if model_name in ("resnet50", "resnet18", "hrnet_w18", "vit_tiny_patch16_224"):
             in_channels = 1 if config.dataset.dataset_mean is None else len(config.dataset.dataset_mean)
             return TimmFeatureExtractor(
@@ -67,8 +75,8 @@ class ModelBuilder:
         # if the inserted string is wrong
         raise ValueError(
             f"model must be" +
-            f"{ {'default', 'mlp', 'cnn', 'cnn105', 'resnet50', 'hrnet_w18', 'vit_tiny_patch16_224'} }" +
-            f"or compare variants. You wrote: {config.model.model_name}"
+            f"{ {'default', 'mlp', 'cnn', 'cnn105', 'resnet18', 'resnet50', 'hrnet_w18', 'vit_tiny_patch16_224'} }." +
+            f"compare or mmix variants allowed: prepend them to the model name. \nYou wrote: {config.model.model_name}"
         )
     
 

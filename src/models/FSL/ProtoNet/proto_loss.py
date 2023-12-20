@@ -143,7 +143,8 @@ class ProtoTools:
         data_np = embeddings.numpy()
 
         # reduce the dimensionality to 2D
-        tsne = TSNE(n_components=2, random_state=42)
+        perplex = 30 if n_classes * n_support > 30 else 20
+        tsne = TSNE(n_components=2, random_state=42, perplexity=perplex)
         data_tsne = tsne.fit_transform(data_np)
 
         # plot t-SNE with colored points based on classes

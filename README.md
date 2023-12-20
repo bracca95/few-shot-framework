@@ -39,7 +39,7 @@ Your own dataset can be built by implementing the abstract class `DatasetWrapper
 
 ### Model
 ```
-"model": { "default", "mlp", "cnn", "cnn105", "resnet50", "hrnet_w18", "vit_tiny_patch16_224" } and compare version,
+"model": { 'default', 'mlp', 'cnn', 'cnn105', 'resnet18', 'resnet50', 'hrnet_w18', 'vit_tiny_patch16_224' } compare or mmix variants allowed: prepend them to the model name,
 "freeze": bool (freeze feature extractor parameters),
 "fsl": Optional if ProtoNet is required (the model must not contain 'compare' in its name)
   "episodes": int,

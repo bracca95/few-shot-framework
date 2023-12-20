@@ -6,7 +6,7 @@ from torch import nn
 from typing import Callable, Optional, List
 
 from src.models.model import Model
-from src.models.CNN.squeeze_excitation import SELayer
+from src.models.attention.squeeze_excitation import SELayer
 from src.utils.config_parser import Config
 
 
