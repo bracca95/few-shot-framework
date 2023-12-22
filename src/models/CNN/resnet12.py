@@ -73,7 +73,9 @@ class ResNet12(Model):
     """ResNet12 architecture
 
     ResNet12 can be found in many different formats. This is found in [1] and [2], with the addition of attention
-    layers to adapt to our needs. As stated in [2]:
+    layers to adapt to our needs. This architecture is ideal for 84x84 image size (miniImagenet)
+    
+    As stated in [2]:
     ResNet12 contains 4 residual blocks and each block has 3 CONV layers with 3x3 kernels. The first two CONV layers are
     followed by a batch normalization and a ReLU nonlinearity, and the last CONV layer is followed by a batch 
     normalization and a skip connection which contains a 1x1 convolution. A ReLU nonlinearity and a 2x2 max-pooling 
@@ -150,8 +152,10 @@ class ResNet12(Model):
         if layer_mix == 4:
             out = self.mixup(out, shuffle, lam)
 
-        out = self.avg_pool(out)
-        return out.view(out.size(0), -1)
+        descriptors = out
+        out = self.avg_pool(out).view(out.size(0), -1)
+        
+        return out, descriptors
     
     @staticmethod
     def mixup(x: torch.Tensor, shuffle: Optional[torch.Tensor], lam: Optional[float]) -> torch.Tensor:

@@ -12,14 +12,11 @@ from lib.glass_defect_dataset.config.consts import General as _CG
 
 class ProtoEnhancements:
 
-    ENH_IPN = "ipn"
-    ENH_DIST = "dist_of_dists"
     ENH_APN = "apn"
     ENH_LSTM = "lstm"
     ENH_CONTR_LSTM = "contrastive_lstm"
     ENH_AUTOCORR = "autocorr"
 
-    MOD_DISTSCALE = DistScale.__name__
     MOD_BILSTM = BiLSTM.__name__
     MOD_AUTOCORR_S = f"{ProjHead.__name__}Support"
     MOD_AUTOCORR_Q = f"{ProjHead.__name__}Query"
@@ -44,16 +41,6 @@ class ProtoEnhancements:
         extra_modules = {  }
         config = self.base_model.config
         config_fsl = self.base_model.config.model.fsl
-
-        if self.name == self.ENH_IPN:
-            if not config_fsl.train_n_way == config_fsl.test_n_way:
-                raise ValueError(
-                    f"For distance scaling train/test n_way must be equal " +
-                    f"({config_fsl.train_n_way} != {config_fsl.test_n_way})"
-                )
-            n_way = config_fsl.train_n_way
-            module_dist_scale = DistScale(n_way * n_way, n_way)
-            extra_modules[self.MOD_DISTSCALE] = module_dist_scale
         
         if self.name == self.ENH_LSTM or self.name == self.ENH_CONTR_LSTM:
             extr_out_size = self.base_model.get_out_size(1)

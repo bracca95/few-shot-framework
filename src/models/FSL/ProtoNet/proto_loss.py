@@ -1,6 +1,7 @@
 import torch
 
 from typing import Optional, Tuple, List
+from torch import Tensor
 from torch.nn import functional as F
 
 from src.models.pretrained.classification_head import ManifoldMixup
@@ -14,7 +15,7 @@ class ProtoTools:
     ZERO = torch.tensor(0.0, dtype=torch.float, device=_CG.DEVICE, requires_grad=False)
 
     @staticmethod
-    def euclidean_dist(x: torch.Tensor, y: torch.Tensor, sqrt: bool=True) -> torch.Tensor:
+    def euclidean_dist(x: Tensor, y: Tensor, sqrt: bool=True) -> Tensor:
         """Compute euclidean distance between two tensors
 
         The size has a unique constraint the fact that `d` (feature vector length must be the same). This function can
@@ -49,7 +50,7 @@ class ProtoTools:
         return square_dist
     
     @staticmethod
-    def cosine_distance(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    def cosine_distance(x: Tensor, y: Tensor) -> Tensor:
         n = x.size(0)
         m = y.size(0)
         d = x.size(1)
@@ -63,7 +64,7 @@ class ProtoTools:
         return 1 - sim
 
     @staticmethod
-    def split_batch(img: torch.Tensor, labels: torch.Tensor, n_way: int, n_support: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def split_batch(img: Tensor, labels: Tensor, n_way: int, n_support: int) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
         # the sampler is supposed to ensure class correctness (i.e. number of unique classes == n_way)
         classes = torch.unique(labels)
 
@@ -81,7 +82,7 @@ class ProtoTools:
         return support_set, support_labels, query_set, query_labels
     
     @staticmethod
-    def split_support_query(recons: torch.Tensor, target: torch.Tensor, n_way: int, n_support: int, n_query: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def split_support_query(recons: Tensor, target: Tensor, n_way: int, n_support: int, n_query: int) -> Tuple[Tensor, Tensor]:
         # check correct input
         classes = torch.unique(target)
         if not n_way == len(classes):
@@ -99,67 +100,32 @@ class ProtoTools:
         return support_set, query_set
     
     @staticmethod
-    def get_dists(s_batch: torch.Tensor, q_batch: torch.Tensor, enhance: ProtoEnhancements, **kwargs) -> torch.Tensor:
-        n_classes, n_query, n_feat = (q_batch.shape)
+    def get_dists(s_batch: Tensor, q_batch: Tensor, s_descr: Optional[Tensor], q_descr: Optional[Tensor], **kwargs) -> Tensor:
+        n_classes, n_support, n_feat = (s_batch.shape)
+        _,         n_query, _        = (q_batch.shape)
 
         sqrt_eucl = False
         if "sqrt_eucl" in kwargs:
             sqrt_eucl: bool = kwargs["sqrt_eucl"]
 
         ### vanilla protonet
-        protos = torch.mean(s_batch, dim=1)
-        dists = ProtoTools.euclidean_dist(q_batch.view(-1, n_feat), protos, sqrt_eucl)
-        ### EOF: vanilla protonet
-
-        if enhance.name == ProtoEnhancements.ENH_IPN:
-            proto_dists = ProtoTools.euclidean_dist(s_batch.view(-1, n_feat), protos, sqrt_eucl)
-            mean_dists = torch.mean(proto_dists.view(n_classes, -1, n_classes), dim=1)
-            alphas = enhance.extra_modules[ProtoEnhancements.MOD_DISTSCALE].forward(mean_dists)
-            dists = dists / alphas
-        elif enhance.name == ProtoEnhancements.ENH_DIST:
-            proto_dists = ProtoTools.euclidean_dist(s_batch.view(-1, n_feat), protos, sqrt_eucl)
-            query_dists = ProtoTools.euclidean_dist(q_batch.view(-1, n_feat), protos, sqrt_eucl)
-            mean_dists = torch.mean(proto_dists.view(n_classes, -1, n_classes), dim=1)
-            dists = ProtoTools.euclidean_dist(query_dists, mean_dists, sqrt_eucl)
-        else:
-            pass
+        if s_descr is None or q_descr is None:
+            protos = torch.mean(s_batch, dim=1)
+            dists = ProtoTools.euclidean_dist(q_batch.view(-1, n_feat), protos, sqrt_eucl)
+            return dists
         
-        return dists
-    
-    @staticmethod
-    def plot_tsne(embeddings: torch.Tensor, n_classes: int, n_support: int, epoch: Optional[int]=None):
-        import os
-        import numpy as np
-        import matplotlib.pyplot as plt
-        from sklearn.manifold import TSNE
+        protos = torch.mean(s_batch, dim=1)
+        s_descr = s_descr.view(n_classes, n_support, n_feat, -1)
+        s_descr_protos = torch.mean(s_descr, dim=1)
+        all_protos = torch.cat((protos.unsqueeze(2), s_descr_protos), dim=-1)
+        
+        q_descr = q_descr.view(n_classes, n_query, n_feat, -1)
+        all_queries = torch.cat((q_batch.unsqueeze(3), q_descr), dim=-1).view(n_classes * n_query, n_feat, -1)
 
-        if not len(embeddings.shape) == 2:
-            Logger.instance.warning(f"Failed t-sne: embeddings should have 2 dim, have {len(embeddings.shape)} instead")
-
-        if not embeddings.device == torch.device("cpu"):
-            embeddings = embeddings.detach().cpu()
-
-        labels = np.repeat(np.arange(n_classes), n_support)
-        data_np = embeddings.numpy()
-
-        # reduce the dimensionality to 2D
-        perplex = 30 if n_classes * n_support > 30 else 20
-        tsne = TSNE(n_components=2, random_state=42, perplexity=perplex)
-        data_tsne = tsne.fit_transform(data_np)
-
-        # plot t-SNE with colored points based on classes
-        plt.figure(figsize=(8, 6))
-        for class_label in range(n_classes):
-            mask = (labels == class_label)
-            plt.scatter(data_tsne[mask, 0], data_tsne[mask, 1], label=f"class {class_label}")
-
-        ep = f"_epoch_{epoch}" if epoch is not None else ""
-        filename = os.path.join(os.getcwd(), "output", f"tsne_epoch{ep}.png")
-        plt.title('t-SNE Visualization with Class Colors')
-        plt.xlabel('x')
-        plt.ylabel('y')
-        plt.legend()
-        plt.savefig(filename)
+        dists_list = [ProtoTools.euclidean_dist(all_queries[:, :, i], all_protos[:, :, i], sqrt_eucl) for i in range(all_protos.size(-1))]
+        dists = torch.stack(dists_list, dim=0)
+        
+        return dists.sum(0)
     
 
 class ProtoLoss:
@@ -177,16 +143,16 @@ class ProtoLoss:
         second_half = torch.full((tot_epochs - len(first_half),), ProtoLoss.GAMMA)
         self.gammas = torch.cat((first_half, second_half))
         
-        self.acc: torch.Tensor = torch.FloatTensor([]).to(_CG.DEVICE)
-        self.proto_loss: torch.Tensor = torch.FloatTensor([]).to(_CG.DEVICE)
-        self.contrastive_loss: Optional[torch.Tensor] = None
-        self.soft_loss: Optional[torch.Tensor] = None
+        self.acc: Tensor = torch.FloatTensor([]).to(_CG.DEVICE)
+        self.proto_loss: Tensor = torch.FloatTensor([]).to(_CG.DEVICE)
+        self.contrastive_loss: Optional[Tensor] = None
+        self.soft_loss: Optional[Tensor] = None
 
         # must be updated
-        self.loss: torch.Tensor = self.__init_loss()
+        self.loss: Tensor = self.__init_loss()
         self.loss_dict: dict = self.__init_loss_dict()
 
-    def compute_loss(self, recons: torch.Tensor, target: torch.Tensor, n_way: int, n_support: int, n_query: int, epoch: int):
+    def compute_loss(self, recons: Tensor, target: Tensor, n_way: int, n_support: int, n_query: int, epoch: int):
         s_batch, q_batch = ProtoTools.split_support_query(recons, target, n_way, n_support, n_query)
 
         ## compute required losses 
@@ -224,14 +190,16 @@ class ProtoLoss:
 
     def new_compute_loss(
             self, 
-            xs_emb: torch.Tensor,
-            xq_emb: torch.Tensor,
-            shuffle: torch.Tensor,
-            lam: float,
+            xs_emb: Tensor,
+            xq_emb: Tensor,
+            s_descr: Optional[Tensor],
+            q_descr: Optional[Tensor],
+            shuffle: Optional[Tensor],
+            lam: Optional[float],
             n_way: int,
             n_support: int,
             n_query: int
-        ) -> Tuple[torch.Tensor, torch.Tensor]:
+        ) -> Tuple[Tensor, Tensor]:
 
         # contrastive loss
         if self.enhance.name == ProtoEnhancements.ENH_APN or self.enhance.name == ProtoEnhancements.ENH_CONTR_LSTM:
@@ -249,6 +217,8 @@ class ProtoLoss:
         self.proto_loss, self.acc = self._proto_loss_mmix(
             xs_emb.view(n_way, n_support, -1),
             xq_emb.view(n_way, n_query, -1),
+            s_descr,
+            q_descr,
             shuffle,
             lam,
             n_way,
@@ -273,14 +243,16 @@ class ProtoLoss:
 
     def _proto_loss_mmix(
             self,
-            s_batch: torch.Tensor,
-            q_batch: torch.Tensor,
-            shuffle: torch.Tensor,
-            lam: float,
+            s_batch: Tensor,
+            q_batch: Tensor,
+            s_descr: Optional[Tensor],
+            q_descr: Optional[Tensor],
+            shuffle: Optional[Tensor],
+            lam: Optional[float],
             n_way: int,
             n_query: int
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        dists = ProtoTools.get_dists(s_batch, q_batch, self.enhance, sqrt_eucl=self.sqrt_eucl)
+    ) -> Tuple[Tensor, Tensor]:
+        dists = ProtoTools.get_dists(s_batch, q_batch, s_descr, q_descr, sqrt_eucl=self.sqrt_eucl)
 
         log_p_y = F.log_softmax(-dists, dim=1)
 
@@ -299,7 +271,7 @@ class ProtoLoss:
 
         return loss_val, acc_val
 
-    def _proto_loss(self, s_batch: torch.Tensor, q_batch: torch.Tensor, n_way: int, n_query: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _proto_loss(self, s_batch: Tensor, q_batch: Tensor, n_way: int, n_query: int) -> Tuple[Tensor, Tensor]:
         dists = ProtoTools.get_dists(s_batch, q_batch, self.enhance, sqrt_eucl=self.sqrt_eucl)
 
         log_p_y = F.log_softmax(-dists, dim=1).view(n_way, n_query, -1)
@@ -313,11 +285,12 @@ class ProtoLoss:
 
         return loss_val, acc_val
     
-    def _soft_nn_loss(self, xs_emb: torch.Tensor, n_classes: int, n_support: int) -> torch.Tensor:
+    def _soft_nn_loss(self, xs_emb: Tensor, n_classes: int, n_support: int) -> Tensor:
         bs = n_classes * n_support
         main_mask = ~torch.eye(bs, dtype=torch.bool, device=_CG.DEVICE).view(bs, 1, bs)
         r = torch.arange(bs).to(_CG.DEVICE).detach()
 
+        # norm_emb = xs_emb / torch.linalg.norm(xs_emb, dim=-1, ord=2, keepdim=True)
         dists = ProtoTools.euclidean_dist(xs_emb, xs_emb).unsqueeze(0).view(n_classes, n_support, -1)
 
         # numerator
@@ -339,7 +312,7 @@ class ProtoLoss:
         loss = torch.div(-log_sum, bs)
         return loss
 
-    def _barlow_cc_loss(self, xs_emb: torch.Tensor, n_classes: int, n_support: int) -> torch.Tensor:
+    def _barlow_cc_loss(self, xs_emb: Tensor, n_classes: int, n_support: int) -> Tensor:
         const = 5e-3
         xs_norm = F.normalize(xs_emb, p=2, dim=-1) # no need to norm since need not be orthonormal
         autocorr = torch.matmul(xs_norm, xs_norm.t())
@@ -353,7 +326,7 @@ class ProtoLoss:
 
         return loss
 
-    def _triplet_loss(self, xs_emb: torch.Tensor, n_classes: int, n_support: int) -> torch.Tensor:
+    def _triplet_loss(self, xs_emb: Tensor, n_classes: int, n_support: int) -> Tensor:
         """
         
         The 'for loop' way:
@@ -394,7 +367,7 @@ class ProtoLoss:
         
         return loss
     
-    def _lifted_structured_loss(self, xs_emb: torch.Tensor, n_classes: int, n_support: int) -> torch.Tensor:
+    def _lifted_structured_loss(self, xs_emb: Tensor, n_classes: int, n_support: int) -> Tensor:
         # norm_emb = xs_emb / torch.linalg.norm(xs_emb, dim=-1, ord=2, keepdim=True)                    # L2 row-vector norm
         # norm_emb = (xs_emb - xs_emb.mean()) / (xs_emb.std() + 1e-6)                                   # z-score normalization aka standardization (batch-norm)
         # norm_emb = xs_emb / torch.linalg.matrix_norm(xs_emb, ord='fro')                               # matrix norm
@@ -461,11 +434,11 @@ class ProtoLoss:
 
 class TestResult:
     def __init__(self):
-        self.acc_overall = torch.Tensor().to(_CG.DEVICE)
-        self.y_hat = torch.Tensor().to(_CG.DEVICE)
-        self.target_inds = torch.Tensor().to(_CG.DEVICE)
+        self.acc_overall = Tensor().to(_CG.DEVICE)
+        self.y_hat = Tensor().to(_CG.DEVICE)
+        self.target_inds = Tensor().to(_CG.DEVICE)
 
-    def proto_test(self, recons: torch.Tensor, target: torch.Tensor, n_way: int, n_support: int, n_query: int, enhance: ProtoEnhancements, sqrt_eucl: bool):
+    def proto_test(self, recons: Tensor, target: Tensor, n_way: int, n_support: int, n_query: int, enhance: ProtoEnhancements, sqrt_eucl: bool):
         mapping = { i: i for i in range(n_way) }
         
         s_batch, q_batch = ProtoTools.split_support_query(recons, target, n_way, n_support, n_query)
@@ -487,6 +460,41 @@ class TestResult:
 
         return acc_overall, { v: recall[i] for i, v in enumerate(mapping.values()) }
     
+    def new_proto_test(self,
+            s_batch: Tensor,
+            q_batch: Tensor,
+            s_descr: Optional[Tensor],
+            q_descr: Optional[Tensor],
+            n_way: int,
+            n_query: int
+    ) -> Tuple[Tensor, dict]:
+        mapping = { i: i for i in range(n_way) }
+        dists = ProtoTools.get_dists(s_batch, q_batch, s_descr, q_descr, sqrt_eucl=True)
+
+        log_p_y = F.log_softmax(-dists, dim=1)
+
+        # build one-hot targets
+        one_hot_labels = torch.eye(n_way, dtype=torch.float, device=_CG.DEVICE)
+        one_hot_labels = one_hot_labels.unsqueeze(1).expand(n_way, n_query, n_way).reshape(-1, n_way)
+
+        # accuracy
+        _, y_hat = log_p_y.max(-1)
+        _, y_mix = one_hot_labels.max(-1)
+        acc_overall = y_hat.eq(y_mix).float().mean()
+        recall = {
+            c: torch.div(
+                    (y_hat.eq(c) & y_mix.eq(c)).sum(),
+                    (y_hat.eq(c) & y_mix.eq(c)).sum() + (y_hat.ne(c) & y_mix.eq(c)).sum()
+                )
+            for c in range(n_way)
+        }
+
+        self.acc_overall = torch.cat((self.acc_overall, acc_overall.flatten()))
+        self.y_hat = torch.cat((self.y_hat, y_hat.flatten()))
+        self.target_inds = torch.cat((self.target_inds, y_mix))
+
+        return acc_overall, { v: recall[i] for i, v in enumerate(mapping.values()) }
+    
 
 class InferenceResult:
 
@@ -497,7 +505,7 @@ class InferenceResult:
     def __init__(
             self,
             enhance: ProtoEnhancements,
-            s_emb: torch.Tensor,
+            s_emb: Tensor,
             n_way: int,
             k_shot_s: int,
             dim: int,
