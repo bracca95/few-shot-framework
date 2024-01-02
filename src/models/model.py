@@ -1,6 +1,13 @@
+import os
 import torch
-from torch import nn
-from typing import Optional, Union
+import numpy as np
+import matplotlib.pyplot as plt
+
+from torch import nn, Tensor
+from torch.types import _dtype
+from typing import Optional, Union, List
+from sklearn.manifold import TSNE
+from torchvision.transforms import transforms
 
 from src.utils.config_parser import Config
 from lib.glass_defect_dataset.src.utils.tools import Logger
@@ -72,12 +79,15 @@ class Model(nn.Module):
         return output.shape
     
     @staticmethod
+    def one_hot_encoding(y: Tensor, n_classes: int, dtype: _dtype=torch.float):
+        one = 1.0 if dtype is torch.float else int(1)
+        one_hot_labels = torch.zeros((y.size(0), n_classes), dtype=dtype, device=_CG.DEVICE)
+        one_hot_labels[range(len(y)), y] = one
+        
+        return one_hot_labels
+    
+    @staticmethod
     def plot_tsne(embeddings: torch.Tensor, n_classes: int, n_samples: int, epoch: Optional[int]=None):
-        import os
-        import numpy as np
-        import matplotlib.pyplot as plt
-        from sklearn.manifold import TSNE
-
         if not len(embeddings.shape) == 2:
             Logger.instance.warning(f"Failed t-sne: embeddings should have 2 dim, have {len(embeddings.shape)} instead")
 
@@ -100,8 +110,40 @@ class Model(nn.Module):
 
         ep = f"_epoch_{epoch}" if epoch is not None else ""
         filename = os.path.join(os.getcwd(), "output", f"tsne_epoch{ep}.png")
-        plt.title('t-SNE Visualization with Class Colors')
-        plt.xlabel('x')
-        plt.ylabel('y')
+        plt.title("t-SNE Visualization with Class Colors")
+        plt.xlabel("x")
+        plt.ylabel("y")
         plt.legend()
         plt.savefig(filename)
+        plt.close()
+
+    @staticmethod
+    def visual_attention(img: Tensor, att: Tensor, mean: Optional[List[float]], std: Optional[List[float]], ep: int):
+        if att is None:
+            return
+
+        # prepare: select a random image, get its size and check if de-normalization is needed
+        select: int = torch.randint(0, img.size(0), (1,)).item()
+        s = img.size(-1)
+        denorm = nn.Identity()
+        if mean is not None and std is not None:
+            denorm = transforms.Normalize(mean=[-m/s for m, s in zip(mean, std)], std=[1/s for s in std])
+
+        # get one image and its corresponding attention
+        att = att[select].detach().cpu()
+        img = img[select].detach().cpu()
+        img = denorm(img)
+
+        # resize attention to match the input size and normalize
+        attention_weights = nn.functional.interpolate(att.unsqueeze(0), size=(s, s), mode='bilinear', align_corners=False)
+        attention_weights = attention_weights.squeeze()
+        attention_weights = (attention_weights - attention_weights.min()) / (attention_weights.max() - attention_weights.min() + 1e-6)
+        heatmap = attention_weights.numpy()
+
+        # plot with overlay
+        plt.figure()
+        plt.imshow(transforms.ToPILImage()(img))
+        plt.imshow(heatmap, cmap='viridis', alpha=0.5)
+        plt.title('Attention Heatmap')
+        plt.savefig(os.path.join(os.getcwd(), "output", f"attention_{ep}.png"))
+        plt.close()

@@ -4,7 +4,6 @@ import torch.nn as nn
 from typing import Callable, Optional, List
 
 from src.models.model import Model
-from src.models.attention.squeeze_excitation import SELayer
 from src.models.attention.cbam import CBAMLayer
 from src.utils.config_parser import Config
 
@@ -35,8 +34,7 @@ class Block(nn.Module):
         self.bn2 = norm_layer(planes)
         self.conv3 = conv3x3(planes, planes)
         self.bn3 = norm_layer(planes)
-        self.att_channel = SELayer(planes)
-        self.att_spatial = CBAMLayer()
+        self.cbam = CBAMLayer(planes)
 
         self.downsample = downsample
         self.maxpool = nn.MaxPool2d(2)
@@ -56,8 +54,9 @@ class Block(nn.Module):
         out = self.conv3(out)
         out = self.bn3(out)
         if self.attention:
-            out = self.att_channel(out)
-            out = self.att_spatial(out)
+            out, att = self.cbam(out)
+        else:
+            _, att = self.cbam(out)
 
         identity = self.downsample(x)
         out += identity
@@ -66,7 +65,7 @@ class Block(nn.Module):
         out = self.relu(out)
         out = self.maxpool(out)
 
-        return out
+        return out, self.maxpool(att)
 
 
 class ResNet12(Model):
@@ -136,26 +135,36 @@ class ResNet12(Model):
         if layer_mix == 0: # mixup at image level
             out = self.mixup(out, shuffle, lam)
 
-        out = self.layer1(out)
+        out, _ = self.layer1(out)
         if layer_mix == 1:
             out = self.mixup(out, shuffle, lam)
 
-        out = self.layer2(out)
+        out, _ = self.layer2(out)
         if layer_mix == 2:
             out = self.mixup(out, shuffle, lam)
 
-        out = self.layer3(out)
+        out, _ = self.layer3(out)
         if layer_mix == 3:
             out = self.mixup(out, shuffle, lam)
 
-        out = self.layer4(out)
+        out, attention = self.layer4(out)
         if layer_mix == 4:
             out = self.mixup(out, shuffle, lam)
 
-        descriptors = out
-        out = self.avg_pool(out).view(out.size(0), -1)
+        out_main = self.avg_pool(out).view(out.size(0), -1)
+        descriptors = out.view(out.size(0), out.size(1), -1)
+        att = attention.detach()
+
+        # find top descriptors from the attention
+        bs = descriptors.size(0)
+        feat = descriptors.size(1)
+        center = descriptors.size(-1) // 2
+        attention = attention.view(attention.size(0), -1)
+        top_indices = torch.topk(attention, k=5, dim=-1).indices
+        center_idx = torch.full((bs, 1), center, dtype=torch.int64, device=descriptors.device)
+        top_desc = torch.gather(descriptors, 2, center_idx.unsqueeze(1).expand(-1, feat, -1))
         
-        return out, descriptors
+        return out_main, top_desc, att
     
     @staticmethod
     def mixup(x: torch.Tensor, shuffle: Optional[torch.Tensor], lam: Optional[float]) -> torch.Tensor:

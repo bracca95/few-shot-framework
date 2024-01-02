@@ -5,7 +5,7 @@ from typing import Optional, List
 
 from src.models.model import Model
 from src.models.LSTM.bilstm import BiLSTM
-from src.models.MLP.proj_heads import ProjHead
+from src.models.MLP.proj_heads import ProjHead, RotationLayer
 from src.models.FSL.ProtoNet.distance_module import DistScale
 from lib.glass_defect_dataset.src.utils.tools import Logger
 from lib.glass_defect_dataset.config.consts import General as _CG
@@ -13,6 +13,7 @@ from lib.glass_defect_dataset.config.consts import General as _CG
 class ProtoEnhancements:
 
     ENH_APN = "apn"
+    ENH_FULL = "full"
     ENH_LSTM = "lstm"
     ENH_CONTR_LSTM = "contrastive_lstm"
     ENH_AUTOCORR = "autocorr"
@@ -20,6 +21,7 @@ class ProtoEnhancements:
     MOD_BILSTM = BiLSTM.__name__
     MOD_AUTOCORR_S = f"{ProjHead.__name__}Support"
     MOD_AUTOCORR_Q = f"{ProjHead.__name__}Query"
+    MOD_ROTATION = RotationLayer.__name__
 
     def __init__(self, base_model: Model):
         self.base_model = base_model
@@ -41,6 +43,11 @@ class ProtoEnhancements:
         extra_modules = {  }
         config = self.base_model.config
         config_fsl = self.base_model.config.model.fsl
+
+        if self.name == self.ENH_APN:
+            extra_out_size = self.base_model.get_out_size(1)
+            module_rotation = RotationLayer(config, extra_out_size, 4)
+            extra_modules[self.MOD_ROTATION] = module_rotation
         
         if self.name == self.ENH_LSTM or self.name == self.ENH_CONTR_LSTM:
             extr_out_size = self.base_model.get_out_size(1)

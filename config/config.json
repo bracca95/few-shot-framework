@@ -1,12 +1,12 @@
 {
     "experiment_name": "disabled",
     "dataset": {
-        "dataset_path": "/media/lorenzo/D/datasets/miniimagenet",
-        "dataset_type": "miniimagenet",
+        "dataset_path": "/media/lorenzo/D/datasets/CUB/CUB_200_2011",
+        "dataset_type": "cub",
         "dataset_splits": [
             0.7,
-            0.0,
-            0.3
+            0.1,
+            0.2
         ],
         "normalize": true,
         "crop_size": 30,
@@ -14,14 +14,14 @@
         "augment_online": null,
         "augment_offline": null,
         "dataset_mean": [
-            0.48500001430511475,
-            0.4560000002384186,
-            0.4059999883174896
+            0.4915037751197815,
+            0.5043349266052246,
+            0.4394022822380066
         ],
         "dataset_std": [
-            0.2290000021457672,
-            0.2240000069141388,
-            0.22499999403953552
+            0.12567487359046936,
+            0.12311597913503647,
+            0.1480003446340561
         ]
     },
     "model": {
@@ -29,7 +29,7 @@
         "freeze": false,
         "pretrained": false,
         "fsl": {
-            "episodes": 100,
+            "episodes": 200,
             "train_n_way": 5,
             "train_k_shot_s": 5,
             "train_k_shot_q": 5,

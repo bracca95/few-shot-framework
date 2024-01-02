@@ -47,7 +47,7 @@ class ModelBuilder:
             if model_name_stripped == "resnet18":
                 return ResNetMixup(config, SEBasicBlock, [2, 2, 2, 2], 256)
             elif model_name_stripped == "resnet12":
-                return ResNet12(config, attention=True)
+                return ResNet12(config, attention=False)
             else:
                 raise ValueError(f"{model_name_stripped} backbone not defined for mmix")
             

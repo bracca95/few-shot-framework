@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 from typing import Optional, List, Tuple
 
 from src.models.model import Model
+from src.models.MLP.proj_heads import RotationLayer
 from src.models.FSL.ProtoNet.proto_batch_sampler import PrototypicalBatchSampler
 from src.models.FSL.ProtoNet.proto_loss import ProtoLoss, ProtoTools, TestResult, InferenceResult
 from src.models.FSL.ProtoNet.proto_extra_modules import ProtoEnhancements
@@ -111,22 +112,36 @@ class ProtoRoutine(TrainTest):
                 x, y = x.to(_CG.DEVICE), y.to(_CG.DEVICE)
                 xs, _, xq, _ = ProtoTools.split_batch(x, y, n_way, k_support)
 
-                # mixup - only for targets (queries)
+                # PREPARE::mixup
                 alpha = 2
                 lam = torch.distributions.Beta(alpha, alpha).sample((1,)).item()
                 shuffle = torch.randperm(xq.size(0))
+                
+                # PREPARE::rotation
+                xs_rot, ys_rot = RotationLayer.rotate_batch(xs, one_hot=True)
+                xq_rot, yq_rot = RotationLayer.rotate_batch(xq, one_hot=True, shuffle=shuffle, lam=lam)
 
                 # run models: query should be mixed
-                xs_emb, s_descr = self.modules.base_model(xs)
-                xq_emb, q_descr = self.modules.base_model(xq, shuffle, lam)
+                xs_emb, s_descr, s_att = self.modules.base_model(xs_rot)
+                xq_emb, q_descr, _ = self.modules.base_model(xq_rot, shuffle, lam)
+                
+                # rotation
+                feats = torch.cat((xs_emb, xq_emb), dim=0)
+                y_rot = torch.cat((ys_rot, yq_rot), dim=0)
+                rot_output = self.modules.extra_modules[ProtoEnhancements.MOD_ROTATION](feats)
+                ce_loss = RotationLayer.rotation_loss(rot_output, y_rot)
 
                 # plot t-sne
                 if epoch == 0 and episode == 0:
+                    mean, std = self.model.config.dataset.dataset_mean, self.model.config.dataset.dataset_std
                     Model.plot_tsne(xs_emb, n_way, k_support, 0)
+                    Model.visual_attention(xs, s_att, mean, std, 0)
                 if episode == (self._model_config.fsl.episodes-1):
+                    mean, std = self.model.config.dataset.dataset_mean, self.model.config.dataset.dataset_std
                     Model.plot_tsne(xs_emb, n_way, k_support, (self._model_config.fsl.episodes-1))
+                    Model.visual_attention(xs, s_att, mean, std, (self._model_config.fsl.episodes-1))
 
-                criterion.new_compute_loss(xs_emb, xq_emb, s_descr, q_descr, shuffle, lam, n_way, k_support, k_query)
+                criterion.new_compute_loss(xs_emb, xq_emb, s_descr, q_descr, shuffle, lam, n_way, k_support, k_query, ce_loss)
                 loss, acc = (criterion.loss, criterion.acc)
                 loss.backward()
                 optim.step()
@@ -191,8 +206,8 @@ class ProtoRoutine(TrainTest):
                 xs, _, xq, _ = ProtoTools.split_batch(x, y, n_way, k_support)
 
                 # run models: query should be mixed
-                xs_emb, s_descr = self.modules.base_model(xs)
-                xq_emb, q_descr = self.modules.base_model(xq)
+                xs_emb, s_descr, _ = self.modules.base_model(xs)
+                xq_emb, q_descr, _ = self.modules.base_model(xq)
 
                 criterion.new_compute_loss(xs_emb, xq_emb, s_descr, q_descr, None, None, n_way, k_support, k_query)
                 _, acc = (criterion.loss, criterion.acc)
@@ -243,12 +258,14 @@ class ProtoRoutine(TrainTest):
                     xs, _, xq, _ = ProtoTools.split_batch(x, y, n_way, k_support)
 
                     # run models: query should be mixed
-                    xs_emb, s_descr = self.modules.base_model(xs)
-                    xq_emb, q_descr = self.modules.base_model(xq)
+                    xs_emb, s_descr, s_att = self.modules.base_model(xs)
+                    xq_emb, q_descr, _ = self.modules.base_model(xq)
 
                     # plot t-sne
                     if episode == 0:
+                        mean, std = self.model.config.dataset.dataset_mean, self.model.config.dataset.dataset_std
                         Model.plot_tsne(xs_emb, n_way, k_support, 1)
+                        Model.visual_attention(xs, s_att, mean, std, 1)
 
                     # (overall accuracy [legacy], accuracy per class)
                     legacy_acc, acc_vals = tr.new_proto_test(

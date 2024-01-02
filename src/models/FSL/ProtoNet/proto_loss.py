@@ -147,6 +147,7 @@ class ProtoLoss:
         self.proto_loss: Tensor = torch.FloatTensor([]).to(_CG.DEVICE)
         self.contrastive_loss: Optional[Tensor] = None
         self.soft_loss: Optional[Tensor] = None
+        self.ce_loss: Optional[Tensor] = None
 
         # must be updated
         self.loss: Tensor = self.__init_loss()
@@ -198,7 +199,8 @@ class ProtoLoss:
             lam: Optional[float],
             n_way: int,
             n_support: int,
-            n_query: int
+            n_query: int,
+            ce_loss: Optional[Tensor]=None
         ) -> Tuple[Tensor, Tensor]:
 
         # contrastive loss
@@ -235,6 +237,11 @@ class ProtoLoss:
         
         if self.soft_loss is not None:
             self.loss = self.loss + self.soft_loss
+
+        if ce_loss is not None:
+            self.ce_loss = ce_loss
+            self.loss = self.loss + ce_loss
+            self.loss_dict["ce_loss"] = ce_loss.detach()
         
         # final
         self.loss_dict["total_loss"] = self.loss.detach()
